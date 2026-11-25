@@ -2,7 +2,7 @@
 const VERSION = '__BUILD__';
 const SHELL = 'lc-shell-' + VERSION, DATA = 'lc-data';
 const SHELL_FILES = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/store.js', 'js/data.js', 'js/reco.js', 'js/icons.js',
-  'js/version.js', 'js/haptic.js', 'config.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
+  'js/version.js', 'js/haptic.js', 'js/steps.js', 'js/timers.js', 'config.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
@@ -50,4 +50,15 @@ self.addEventListener('fetch', e => {
   if (url.host.includes('fonts.g') || url.host.includes('themealdb.com')) {
     e.respondWith(caches.open(DATA).then(async c => (await c.match(req)) || fetch(req).then(r => { c.put(req, r.clone()); return r; })));
   }
+});
+
+// clic sur la notification d'un minuteur : on rouvre l'appli et on affiche les minuteurs
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const c = all[0];
+    if (c) { await c.focus(); c.postMessage({ type: 'timer-open' }); }
+    else await self.clients.openWindow('./');
+  })());
 });

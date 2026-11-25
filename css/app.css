@@ -228,6 +228,63 @@ details.aisle summary::-webkit-details-marker{display:none}
 .step .n{width:40px;height:40px;border-radius:50%;background:var(--cream);flex:none;display:flex;align-items:center;justify-content:center;font-family:var(--head);font-weight:600;color:var(--red)}
 .step .tx{flex:1}
 .step .lbl{color:var(--muted);font-size:14px}
+.step{position:relative;line-height:1.55}
+.step .tx{padding-top:1px}
+.step:not(:last-child)::before{content:'';position:absolute;left:19px;top:58px;bottom:-6px;width:2px;background:var(--cream2);border-radius:2px}
+/* grandes parties de la recette */
+.stsec{display:flex;align-items:center;gap:12px;margin:18px 0 6px;color:var(--red);font-family:var(--head);font-weight:600;font-size:17px}
+.stsec::before,.stsec::after{content:'';flex:1;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--pink))}
+.stsec::after{background:linear-gradient(90deg,var(--pink),transparent)}
+.stsec span{background:var(--red-soft);padding:5px 14px;border-radius:999px;white-space:nowrap;max-width:75%;overflow:hidden;text-overflow:ellipsis}
+.stsec.note{color:var(--muted)}
+.stsec.note span{background:var(--cream)}
+.stnote{background:var(--cream);border-left:4px solid var(--yellow);border-radius:12px;padding:10px 14px;margin:10px 0 10px 54px;font-size:15px;line-height:1.5}
+/* ingrédient cité dans une étape */
+.ingref{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:var(--ink);background:var(--cream);border-radius:999px;padding:0 9px 0 2px;margin:1px 0;line-height:1.6;vertical-align:baseline;text-align:left}
+.ingref .ii{width:22px;height:22px;border-radius:50%;background:var(--white);display:inline-flex;align-items:center;justify-content:center;font-size:14px;color:var(--red);flex:none;align-self:center}
+.ingref .ii .ingpic{width:20px;height:20px;object-fit:contain}
+.ingref:active{background:var(--cream2)}
+/* durée → minuteur */
+.tmchip{display:inline-flex;align-items:center;gap:5px;font-weight:600;color:#fff;background:var(--red);border-radius:999px;padding:1px 10px 1px 8px;margin:1px 0;line-height:1.55;box-shadow:0 2px 6px color-mix(in srgb,var(--red) 35%,transparent);vertical-align:baseline}
+.tmchip .i{vertical-align:middle}
+.tmchip:active{transform:scale(.95)}
+.tempchip{display:inline-flex;align-items:center;gap:3px;font-weight:600;color:var(--red-d);white-space:nowrap}
+.tempchip .i{vertical-align:middle}
+
+/* minuteurs : dock flottant au-dessus de la barre d'onglets */
+.tdock{position:fixed;left:0;right:0;bottom:calc(80px + var(--safe-b));z-index:55;max-width:640px;margin:0 auto;pointer-events:none}
+#sheet:not([hidden]) ~ .tdock{bottom:calc(84px + var(--safe-b))}
+.tpills{display:flex;gap:8px;overflow-x:auto;padding:4px 12px;scrollbar-width:none;justify-content:flex-start}
+.tpills::-webkit-scrollbar{display:none}
+.tpill{pointer-events:auto;flex:none;display:flex;align-items:center;gap:8px;background:var(--ink);color:var(--on-ink);border-radius:999px;padding:6px 14px 6px 6px;box-shadow:0 6px 18px rgba(0,0,0,.25);animation:ctaIn .35s cubic-bezier(.2,1.3,.4,1) both}
+.tpill .ring{width:30px;height:30px;transform:rotate(-90deg)}
+.tpill .ring circle{fill:none;stroke-width:3;stroke:color-mix(in srgb,var(--on-ink) 25%,transparent)}
+.tpill .ring .fg{stroke:var(--yellow);stroke-linecap:round;transition:stroke-dashoffset 1s linear}
+.tpill .tt{font-family:var(--head);font-weight:600;font-size:17px;font-variant-numeric:tabular-nums}
+.tpill .tl{font-size:12px;opacity:.75;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tpill.paused .tt{opacity:.6}
+.tpill.done{background:var(--red);color:#fff;animation:tring 1s ease-in-out infinite}
+.tpill.done .ring .fg{stroke:#fff}
+@keyframes tring{0%,100%{transform:none}10%,30%{transform:rotate(-4deg) scale(1.04)}20%,40%{transform:rotate(4deg) scale(1.04)}50%{transform:none}}
+.tpanel{z-index:65}
+.tmodal .thead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.tmodal .thead h2{margin:0}
+.tmodal .ib{font-size:22px;padding:6px;line-height:0}
+.trow{display:flex;align-items:center;gap:12px;background:var(--white);border-radius:18px;padding:12px 14px;margin:10px 0;box-shadow:var(--shadow)}
+.trow.done{background:var(--red-soft);outline:2px solid var(--red)}
+.tinfo{flex:1;min-width:0}
+.tbig{font-family:var(--head);font-size:32px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.trow.done .tbig{color:var(--red)}
+.tlab{font-weight:600}
+.tsub{font-size:13px;color:var(--muted);text-align:left;display:inline-flex;align-items:center;gap:2px;max-width:100%}
+.tbtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tb{min-width:40px;height:40px;border-radius:999px;background:var(--cream);font-weight:600;font-size:14px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;line-height:0}
+.tb.ok{background:var(--red);color:#fff;padding:0 16px}
+.tb.del{color:var(--muted)}
+.tb:active{transform:scale(.94)}
+.tnote{margin:12px 4px 0;line-height:1.4}
+body:has(#timers:not([hidden])) #app{padding-bottom:calc(130px + var(--safe-b))}
+body:has(#timers:not([hidden])) .sheet .inner{padding-bottom:calc(160px + var(--safe-b))}
 .rate{background:var(--yellow);color:var(--on-yellow);border-radius:var(--r);margin:18px;padding:22px;text-align:center}
 .rate h3{font-size:24px;margin-bottom:12px}
 .rate .thumbs{display:flex;gap:12px;justify-content:center}
