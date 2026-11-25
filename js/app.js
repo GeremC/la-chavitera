@@ -14,7 +14,9 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
 const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 let tab = 'menu', sheetState = null, ingLex = null;
-const disc = { q: '', type: 'plat', cuisine: '', quick: false, easy: false, cheap: false, shown: 30 };
+const disc = { q: '', scope: 'all', type: 'plat', cuisine: '', quick: false, easy: false, cheap: false, shown: 30, focus: false };
+const favIds = () => S.list('fav:').map(([k]) => +k).filter(id => DB.byId.has(id));
+const discDefaultType = () => disc.scope === 'fav' ? '' : 'plat';
 const histOpen = new Set();
 let showDeleted = false;
 
@@ -135,7 +137,10 @@ function renderMenu() {
   }).join('');
   const ex = new Set(m.items.map(i => i.id));
   const extras = R.suggest(3, { exclude: ex, types: ['dessert', 'entree'] });
+  const nFav = favIds().length;
   view.innerHTML = `
+    <div class="searchrow"><button class="search fake" data-act="openSearch">${ic('search')}<span>Rechercher une recette…</span></button>
+      <button class="favbtn" data-act="openFavs" aria-label="Recettes favorites">${ic('heart')}${nFav ? `<b>${nFav}</b>` : ''}</button></div>
     ${settingsBar(st)}
     ${old ? `<div class="banner yellow"><span class="be">${ic('calendar')}</span><div class="spacer"><b style="background:none;color:inherit;padding:0">Nouvelle semaine ?</b><br><span class="small">Archivez ce menu pour le retrouver dans les archives.</span></div><button class="btn small" data-act="archive">Archiver</button></div>` : ''}
     <div class="row" style="margin:20px 0 4px">${stepper('meals', 0, m.items.length)} <span style="font-size:20px">repas</span><span class="spacer"></span>
@@ -158,36 +163,44 @@ function matchQuery(r, words) {
   return words.every(w => hay.includes(w));
 }
 function renderDiscover(keepScroll) {
-  setTitle(`<button class="back" data-act="go" data-tab="menu" aria-label="Retour au menu">${ic('back')}</button>Ajouter une recette`);
+  setTitle(`<button class="back" data-act="go" data-tab="menu" aria-label="Retour au menu">${ic('back')}</button>Recettes`);
   const st = R.settings();
   const words = norm(disc.q).split(/\s+/).filter(Boolean);
+  const favs = favIds(), isFav = disc.scope === 'fav';
   let hidden = 0;
-  let list = DB.list.filter(r => {
+  // en mode Favoris, on part des recettes aimées et le profil ne masque rien : c'est vous qui les avez choisies
+  let list = (isFav ? favs.map(id => DB.byId.get(id)) : DB.list).filter(r => {
     if (!((!disc.type || r.t === disc.type) && (!disc.cuisine || r.c === disc.cuisine) &&
       (!disc.quick || (r.tm && r.tm <= 30)) && (!disc.easy || r.d <= 1) && (!disc.cheap || r.p <= 1) &&
       (!words.length || matchQuery(r, words)))) return false;
-    if (R.isExcluded(r, st)) { hidden++; return false; }
+    if (!isFav && R.isExcluded(r, st)) { hidden++; return false; }
     return true;
   });
   list = R.ranked(list);
   const total = list.length; list = list.slice(0, disc.shown);
   const tchip = (v, l) => `<button class="fchip ${disc.type === v ? 'on' : ''}" data-act="dtype" data-v="${v}">${l}</button>`;
   const tog = (k, l) => `<button class="fchip ${disc[k] ? 'on' : ''}" data-act="dtog" data-k="${k}">${l}</button>`;
+  const nActive = [disc.q.trim(), disc.type !== discDefaultType(), disc.cuisine, disc.quick, disc.easy, disc.cheap].filter(Boolean).length;
   const html = `
-    <div class="search">${ic('search')}<input id="q" type="search" placeholder="Recette, ingrédient, pays…" value="${esc(disc.q)}" autocomplete="off"></div>
-    <div class="fchips">${tchip('plat', 'Plats')}${tchip('entree', 'Entrées & soupes')}${tchip('dessert', 'Desserts')}${tchip('petit-dej', 'Petit-déj')}${tchip('boulangerie', 'Boulangerie')}${tchip('', 'Tout')}</div>
+    <div class="search">${ic('search')}<input id="q" type="search" placeholder="${isFav ? 'Chercher dans mes favoris…' : 'Recette, ingrédient, pays…'}" value="${esc(disc.q)}" autocomplete="off"></div>
+    <div class="seg"><button class="${isFav ? '' : 'on'}" data-act="dscope" data-v="all">Toutes les recettes</button><button class="${isFav ? 'on' : ''}" data-act="dscope" data-v="fav">${ic(isFav ? 'heartFill' : 'heart', 'sm')} Favoris${favs.length ? ` (${favs.length})` : ''}</button></div>
+    <div class="fchips">${tchip('', 'Tout')}${tchip('plat', 'Plats')}${tchip('entree', 'Entrées & soupes')}${tchip('dessert', 'Desserts')}${tchip('petit-dej', 'Petit-déj')}${tchip('boulangerie', 'Boulangerie')}</div>
     <div class="fchips">${tog('quick', ic('clock', 'sm') + ' ≤ 30 min')}${tog('easy', ic('sparkle', 'sm') + ' Très facile')}${tog('cheap', ic('euro', 'sm') + ' Bon marché')}
       <button class="fchip ${disc.cuisine ? 'on' : ''}" data-act="dcuisine">${ic('globe', 'sm')} ${esc(disc.cuisine || 'Tous pays')}</button></div>
-    ${settingsBar(st)}
-    <p class="muted small">${total.toLocaleString('fr-FR')} recette${total > 1 ? 's' : ''}${words.length ? '' : ', triées pour vous'}${hidden ? ` · ${hidden.toLocaleString('fr-FR')} masquée${hidden > 1 ? 's' : ''} par votre profil` : ''}</p>
+    ${isFav ? '' : settingsBar(st)}
+    <div class="countrow"><p class="muted small">${total.toLocaleString('fr-FR')} ${isFav ? 'favori' : 'recette'}${total > 1 ? 's' : ''}${words.length || isFav ? '' : ', triées pour vous'}${hidden ? ` · ${hidden.toLocaleString('fr-FR')} masquée${hidden > 1 ? 's' : ''} par votre profil` : ''}</p>
+      ${nActive ? `<button class="linkbtn small" data-act="dreset">${ic('x', 'sm')} Effacer les filtres (${nActive})</button>` : ''}</div>
     <div class="grid">${list.map(r => `
       <div class="card"><button data-act="open" data-id="${r.id}" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px">${plate(r)}
         <h3>${esc(name(r))}</h3></button>
         <div class="chips"><span class="chip">${ic('starFill', 'sm gold')}${r.r.toFixed(1)}</span><span class="chip">${ic('clock')} ${minutes(r.tm)}</span>${r.c ? `<span class="chip">${esc(r.c)}</span>` : ''}</div>
+        <button class="favtog ${favs.includes(r.id) ? 'on' : ''}" data-act="fav" data-id="${r.id}" aria-label="${favs.includes(r.id) ? 'Retirer des favoris' : 'Ajouter aux favoris'}">${ic(favs.includes(r.id) ? 'heartFill' : 'heart')}</button>
         <button class="round red add ${inMenu(r.id) ? 'in' : ''}" data-act="toggleMenu" data-id="${r.id}" aria-label="${inMenu(r.id) ? 'Retirer du menu' : 'Ajouter au menu'}">${ic(inMenu(r.id) ? 'check' : 'plus')}</button>
       </div>`).join('')}</div>
     ${total > disc.shown ? `<div class="center" style="margin:20px"><button class="btn ghost" data-act="more" id="more">Voir plus</button></div>` : ''}
-    ${!total ? `<div class="empty"><div class="ee">${ic('search')}</div><h2>Rien trouvé</h2><p class="muted">Essayez d'autres mots ou retirez des filtres.</p></div>` : ''}`;
+    ${!total ? (isFav && !favs.length
+      ? `<div class="empty"><div class="ee">${ic('heart')}</div><h2>Pas encore de favoris</h2><p class="muted">Touchez le cœur d'une recette pour la retrouver ici.</p><button class="btn" data-act="dscope" data-v="all">Parcourir les recettes</button></div>`
+      : `<div class="empty"><div class="ee">${ic('search')}</div><h2>Rien trouvé</h2><p class="muted">Essayez d'autres mots ou retirez des filtres.</p>${nActive ? '<button class="btn ghost" data-act="dreset">Effacer les filtres</button>' : ''}</div>`) : ''}`;
   const y = window.scrollY;
   // garder le clavier ouvert si la liste se rafraîchit pendant la saisie (synchro, préférences, notes)
   const prev = document.activeElement?.id === 'q' ? document.activeElement : null;
@@ -196,6 +209,7 @@ function renderDiscover(keepScroll) {
   if (keepScroll) window.scrollTo(0, y);
   const q = $('#q');
   if (prev) { q.focus({ preventScroll: true }); try { q.setSelectionRange(...sel); } catch {} }
+  else if (disc.focus) { disc.focus = false; q.focus({ preventScroll: true }); }
   q.addEventListener('input', () => { disc.q = q.value; disc.shown = 30; clearTimeout(q.t); q.t = setTimeout(() => renderDiscover(), 250); });
   const more = $('#more');
   if (more && 'IntersectionObserver' in window) {
@@ -520,6 +534,15 @@ const A = {
     const mb = el.closest('.modal'); if (mb) { mb.querySelectorAll(`[data-id="${el.dataset.id}"]`).forEach(b => b.removeAttribute('style')); if (v === 1) el.style.cssText = 'background:var(--green);color:#fff'; if (v === -1) el.style.cssText = 'background:var(--ink);color:var(--on-ink)'; }
   },
   stars: el => { const k = 'rate:' + el.dataset.id, cur = S.get(k, {}); S.set(k, { ...cur, stars: +el.dataset.v, thumb: cur.thumb || (+el.dataset.v >= 4 ? 1 : +el.dataset.v <= 2 ? -1 : 0), at: Date.now() }); toast('Merci, c\'est noté'); },
+  openSearch: () => { disc.focus = true; switchTab('discover'); },
+  openFavs: () => { if (disc.scope !== 'fav') { disc.scope = 'fav'; disc.type = ''; } disc.shown = 30; switchTab('discover'); },
+  dscope: el => {
+    const v = el.dataset.v; if (v === disc.scope) return;
+    const wasDefault = disc.type === discDefaultType();
+    disc.scope = v; if (wasDefault) disc.type = discDefaultType();
+    disc.shown = 30; window.scrollTo(0, 0); renderDiscover();
+  },
+  dreset: () => { Object.assign(disc, { q: '', type: discDefaultType(), cuisine: '', quick: false, easy: false, cheap: false, shown: 30 }); renderDiscover(); },
   dtype: el => { disc.type = el.dataset.v; disc.shown = 30; renderDiscover(); },
   dtog: el => { disc[el.dataset.k] = !disc[el.dataset.k]; disc.shown = 30; renderDiscover(); },
   dcuisine: () => {

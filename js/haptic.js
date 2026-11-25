@@ -57,7 +57,7 @@ const LEVELS = {
   danger: ['cdel', 'purgeDel', 'remove', 'sremove', 'xdel', 'hdel', 'leave', 'reset'],
   strong: ['fill', 'archive', 'sadd', 'redo', 'createHH', 'joinHH', 'closeModal', 'shopDone'],
   medium: ['add', 'toggleMenu', 'replace', 'open', 'fav', 'thumb', 'stars', 'shareMenu', 'shareList',
-    'copyCode', 'more', 'timerStart', 'setCuisine', 'checkUpdate', 'addex', 'hrate', 'cooked', 'restoreDel'],
+    'copyCode', 'more', 'timerStart', 'setCuisine', 'checkUpdate', 'addex', 'hrate', 'cooked', 'restoreDel', 'openFavs'],
 };
 const BY_ACT = {};
 for (const [lvl, acts] of Object.entries(LEVELS)) acts.forEach(a => BY_ACT[a] = lvl);
