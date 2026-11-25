@@ -427,7 +427,7 @@ async function openRecipe(id, ppl) {
   await renderSheet(true);
 }
 function closeSheet() {
-  sheetState = null; document.body.style.overflow = '';
+  sheetState = null; T.setRecipe(null); document.body.style.overflow = '';
   if (reduceMotion() || sheet.hidden) { sheet.hidden = true; sheet.innerHTML = ''; return; }
   sheet.classList.add('closing');
   setTimeout(() => { sheet.classList.remove('closing'); if (!sheetState) { sheet.hidden = true; sheet.innerHTML = ''; } }, 220);
@@ -443,7 +443,7 @@ function stepsHtml(steps, ings, f) {
     const body = renderStepText(x.text, {
       ing: find,
       ingHtml: (i, t) => `<button class="ingref" data-act="ingtip" data-i="${i}"><span class="ii">${ingPic(ings[i].k, ings[i].n)}</span>${esc(t)}</button>`,
-      timerHtml: (d, t) => `<button class="tmchip" data-act="timerStart" data-s="${d.sec}" data-n="${x.n || ''}" aria-label="Lancer un minuteur de ${fmtDur(d.sec)}">${ic('timer', 'sm')}${esc(t)}</button>`,
+      timerHtml: (d, t) => `<button class="tmchip" data-act="timerStart" data-s="${d.sec}" data-n="${x.n || ''}" data-key="${sheetState.id}:${x.n || 'n'}:${d.start}:${d.sec}" aria-label="Lancer un minuteur de ${fmtDur(d.sec)}">${ic('timer', 'sm')}${esc(t)}</button>`,
       tempHtml: t => `<span class="tempchip">${ic('thermo', 'sm')}${esc(t)}</span>`,
     });
     if (x.note) return `<div class="stnote">${x.label ? `<b>${esc(x.label)} : </b>` : ''}${body}</div>`;
@@ -499,6 +499,7 @@ async function renderSheet(top) {
     <div class="sticky-cta"><button class="btn big" data-act="${inM ? 'sremove' : 'sadd'}" data-id="${id}">${inM ? 'Retirer du menu' : 'Ajouter au menu'}</button></div>
   </div>`;
   sheet.scrollTop = top ? 0 : y;
+  T.setRecipe(id);
 }
 
 // ------------------------------------------------------------ actions
@@ -521,11 +522,10 @@ const A = {
   toggleEn: () => { sheetState.showEn = !sheetState.showEn; renderSheet(); },
   ingtip: el => { const e = sheetState?.ings?.[+el.dataset.i]; if (e) toast(e.qty ? `${e.label} : ${e.qty}` : e.label); },
   timerStart: el => {
-    const sec = +el.dataset.s, n = el.dataset.n, r = sheetState && DB.byId.get(sheetState.id);
-    const dup = T.all().find(t => !t.done && t.rid === r?.id && t.dur === sec * 1000 && Date.now() - (t.end - t.dur) < 4000);
-    if (dup) return;
-    T.start({ sec, label: (n ? `Étape ${n} · ` : '') + fmtDur(sec), sub: r ? name(r) : '', rid: r?.id ?? null });
-    toast(`Minuteur lancé : ${fmtDur(sec)}`);
+    const sec = +el.dataset.s, n = el.dataset.n, key = el.dataset.key, r = sheetState && DB.byId.get(sheetState.id);
+    const cur = T.byKey(key);
+    if (cur) { if (cur.done) T.remove(cur.id); else T.openPanel(); return; } // déjà lancé : on gère depuis le panneau
+    T.start({ sec, label: (n ? `Étape ${n} · ` : '') + fmtDur(sec), sub: r ? name(r) : '', rid: r?.id ?? null, key, n: n ? +n : null });
   },
   fav: el => { const k = 'fav:' + el.dataset.id; S.get(k) ? S.del(k) : S.set(k, true); },
   thumb: el => {
