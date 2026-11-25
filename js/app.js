@@ -42,9 +42,9 @@ function closeModalEl(bg) {
 }
 
 // ------------------------------------------------------------ historique (bouton / geste retour)
-// Pile : Préparer est la racine (d = 0). Les autres onglets sont un niveau au-dessus (on les remplace
+// Pile : Choisir est la racine (d = 0). Les autres onglets sont un niveau au-dessus (on les remplace
 // entre eux), la recherche, la fiche recette et les fenêtres empilent un niveau de plus.
-// Retour depuis un onglet ramène à Préparer ; retour depuis Préparer quitte l'app, comme une app native.
+// Retour depuis un onglet ramène à Choisir ; retour depuis Choisir quitte l'app, comme une app native.
 const navState = () => history.state && typeof history.state.d === 'number' ? history.state : { tab: 'menu', d: 0 };
 const navPush = st => history.pushState({ ...st, d: navState().d + 1 }, '');
 const navReplace = st => history.replaceState(st, '');
@@ -135,7 +135,7 @@ function settingsBar(st) {
 // ------------------------------------------------------------ vue Menu
 function renderMenu() {
   const st = R.settings(), m = menu(), prof = R.tasteProfile();
-  setTitle('Préparer les menus', `<button class="ib" data-act="shareMenu" aria-label="Partager">${ic('share')}</button>`);
+  setTitle('Choisir les menus', `<button class="ib" data-act="shareMenu" aria-label="Partager">${ic('share')}</button>`);
   const old = m.items.length && Date.now() - m.created > 6 * 86400000;
   const items = m.items.map(it => {
     const r = DB.byId.get(it.id); if (!r) return '';
@@ -307,7 +307,7 @@ function renderCook() {
   const rs = m.items.map(it => ({ it, r: DB.byId.get(it.id) })).filter(x => x.r);
   setTitle(`Cette semaine${rs.length ? ` <span class="sub">${rs.length} repas</span>` : ''}`);
   if (!rs.length) {
-    view.innerHTML = `<div class="empty"><div class="ee">${ic('chef')}</div><h2>Rien à cuisiner</h2><p class="muted">Préparez d'abord le menu de la semaine : il apparaîtra ici, prêt à cuisiner.</p><button class="btn" data-act="go" data-tab="menu">Préparer le menu</button></div>`;
+    view.innerHTML = `<div class="empty"><div class="ee">${ic('chef')}</div><h2>Rien à cuisiner</h2><p class="muted">Choisissez d'abord le menu de la semaine : il apparaîtra ici, prêt à cuisiner.</p><button class="btn" data-act="go" data-tab="menu">Choisir le menu</button></div>`;
     return;
   }
   const todo = rs.filter(x => !isCooked(m, x.r.id)), cooked = rs.filter(x => isCooked(m, x.r.id));
@@ -657,7 +657,7 @@ function switchTab(t, opts = {}) {
     const cur = navState();
     if (cur.sheet || cur.modal) { pendingTab = t; history.back(); return; }
     if (t === from) { window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' }); return; }
-    if (t === 'menu' && cur.d > 0) { history.go(-cur.d); return; } // retour à la racine : le popstate affiche Préparer
+    if (t === 'menu' && cur.d > 0) { history.go(-cur.d); return; } // retour à la racine : le popstate affiche Choisir
     if (t === 'discover') navPush({ tab: t });
     else if (cur.d === 0) navPush({ tab: t });
     else navReplace({ tab: t, d: cur.d });
