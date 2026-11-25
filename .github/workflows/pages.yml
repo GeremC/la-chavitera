@@ -12,13 +12,13 @@ concurrency:
   group: pages
   cancel-in-progress: true
 jobs:
-  deploy:
+  # Construction et déploiement dans deux jobs séparés (modèle officiel GitHub) :
+  # l'artefact "github-pages" n'est garanti visible qu'une fois le job d'upload terminé.
+  # Dans un seul job, deploy-pages ne le trouvait parfois pas ("Found 0 artifact(s)").
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
       - name: Tamponner la version (mise à jour auto des PWA installées)
@@ -30,8 +30,15 @@ jobs:
           [ -d data ] && cp -r data _site/ || true
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
