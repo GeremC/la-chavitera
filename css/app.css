@@ -318,6 +318,10 @@ body:has(#timers:not([hidden])) .sheet .inner{padding-bottom:calc(190px + var(--
 .srcline{font-size:13px;color:var(--muted);text-align:center;padding:10px 18px}
 .srcline a{color:var(--muted)}
 .sheet .sticky-cta{bottom:var(--safe-b)}
+/* déjà au menu : « Retirer du menu » reste en bas de la fiche, sans flotter */
+.sheet .sticky-cta.inpage{position:static;padding:8px 18px 20px}
+.sheet .sticky-cta.inpage .btn{box-shadow:none;background:var(--white);color:var(--red);border:2px solid var(--red)}
+.sheet:has(.sticky-cta.inpage) .inner{padding-bottom:calc(24px + var(--safe-b))}
 
 /* divers */
 .empty{text-align:center;padding:40px 20px}

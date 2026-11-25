@@ -496,7 +496,7 @@ async function renderSheet(top) {
       <div class="thumbs"><button class="${rt.thumb === 1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="1" aria-label="J'ai aimé">${ic('thumbUp')}</button><button class="${rt.thumb === -1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="-1" aria-label="Bof">${ic('thumbDown')}</button></div>
       <div class="st">${[1, 2, 3, 4, 5].map(i => `<button class="${(rt.stars || 0) >= i ? 'on' : ''}" data-act="stars" data-id="${id}" data-v="${i}" aria-label="${i} étoile${i > 1 ? 's' : ''}">${ic((rt.stars || 0) >= i ? 'starFill' : 'star')}</button>`).join('')}</div></div>
     <div class="srcline">Recette de la communauté Food.com${d.by ? ' · par ' + esc(d.by) : ''} · <a href="${foodUrl(r)}" target="_blank" rel="noopener">voir l'original</a></div>
-    <div class="sticky-cta"><button class="btn big" data-act="${inM ? 'sremove' : 'sadd'}" data-id="${id}">${inM ? 'Retirer du menu' : 'Ajouter au menu'}</button></div>
+    <div class="sticky-cta${inM ? ' inpage' : ''}"><button class="btn big" data-act="${inM ? 'sremove' : 'sadd'}" data-id="${id}">${inM ? 'Retirer du menu' : 'Ajouter au menu'}</button></div>
   </div>`;
   sheet.scrollTop = top ? 0 : y;
   T.setRecipe(id);
