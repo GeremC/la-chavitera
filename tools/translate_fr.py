@@ -2,7 +2,7 @@
 """
 Traduit automatiquement en français toutes les recettes de data/ (titres, étapes,
 descriptions, noms d'ingrédients inconnus du lexique), hors ligne, avec le modèle
-anglais -> français d'Argos Translate (CTranslate2, tourne sur CPU).
+anglais -> français opus-mt-en-fr (Helsinki-NLP, via CTranslate2, tourne sur CPU).
 
 Les traductions sont mises en cache :
     tools/translations_fr.json     { "id": { "n": ..., "st": [...], "desc": ... } }
@@ -11,19 +11,19 @@ build_data.py les fusionne ensuite. Les traductions déjà présentes (manuelles
 ne sont jamais écrasées : on peut corriger une recette à la main dans translations_fr.json.
 
 Usage :
-    pip install ctranslate2 sentencepiece
+    pip install ctranslate2 sentencepiece transformers torch --extra-index-url https://download.pytorch.org/whl/cpu
     python tools/translate_fr.py [--budget-min 300] [--limit N]
 Le script s'arrête proprement quand le budget de temps est écoulé et reprend là où il
 en était au lancement suivant.
 """
-import argparse, json, re, sys, time, urllib.request, zipfile
+import argparse, json, re, sys, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 TR_PATH = ROOT / "tools" / "translations_fr.json"
 ING_PATH = ROOT / "tools" / "ingredients_fr_mt.json"
-MODEL_URL = "https://argos-net.com/v1/translate-en_fr-1_9.argosmodel"
+MODEL = "Helsinki-NLP/opus-mt-en-fr"
 CACHE = Path.home() / ".cache" / "chavitera-mt"
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -31,20 +31,17 @@ from build_data import norm_ing, fr_name  # noqa: E402
 
 
 def load_model():
-    import ctranslate2, sentencepiece
-    CACHE.mkdir(parents=True, exist_ok=True)
-    pkg = CACHE / "en_fr.argosmodel"
-    if not pkg.exists():
-        print("Téléchargement du modèle en -> fr…")
-        urllib.request.urlretrieve(MODEL_URL, pkg)
-    root = next((p for p in CACHE.glob("*/") if (p / "model").is_dir()), None)
-    if root is None:
-        with zipfile.ZipFile(pkg) as z:
-            z.extractall(CACHE)
-        root = next(p for p in CACHE.glob("*/") if (p / "model").is_dir())
-    tr = ctranslate2.Translator(str(root / "model"), device="cpu", compute_type="int8", inter_threads=1, intra_threads=0)
-    sp = sentencepiece.SentencePieceProcessor(model_file=str(root / "sentencepiece.model"))
-    return tr, sp
+    """Modèle Helsinki-NLP opus-mt-en-fr (Marian), converti une fois pour CTranslate2 (int8, CPU)."""
+    import ctranslate2
+    from transformers import AutoTokenizer
+    out = CACHE / "opus-mt-en-fr-ct2"
+    if not (out / "model.bin").exists():
+        print("Conversion du modèle opus-mt-en-fr pour CTranslate2…", flush=True)
+        CACHE.mkdir(parents=True, exist_ok=True)
+        ctranslate2.converters.TransformersConverter(MODEL).convert(str(out), quantization="int8", force=True)
+    tok = AutoTokenizer.from_pretrained(MODEL)
+    tr = ctranslate2.Translator(str(out), device="cpu", compute_type="int8", inter_threads=1, intra_threads=0)
+    return tr, tok
 
 
 SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9(\"'])")
@@ -56,7 +53,7 @@ def split_sentences(text):
 
 class MT:
     def __init__(self):
-        self.tr, self.sp = load_model()
+        self.tr, self.tok = load_model()
         self.memo = {}
 
     def batch(self, texts):
@@ -64,10 +61,11 @@ class MT:
         todo = sorted({t for t in texts if t not in self.memo}, key=len)
         for i in range(0, len(todo), 64):
             chunk = todo[i:i + 64]
-            toks = [self.sp.encode(t, out_type=str)[:250] for t in chunk]
+            toks = [self.tok.convert_ids_to_tokens(self.tok.encode(t, truncation=True, max_length=256)) for t in chunk]
             res = self.tr.translate_batch(toks, beam_size=2, max_batch_size=64, max_decoding_length=300)
             for t, r in zip(chunk, res):
-                self.memo[t] = self.sp.decode(r.hypotheses[0]).strip()
+                ids = self.tok.convert_tokens_to_ids(r.hypotheses[0])
+                self.memo[t] = self.tok.decode(ids, skip_special_tokens=True).strip()
         return [self.memo[t] for t in texts]
 
     def texts(self, texts):
