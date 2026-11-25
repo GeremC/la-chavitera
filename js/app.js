@@ -142,11 +142,22 @@ function renderDiscover(keepScroll) {
   setTitle('Découvrir');
   const st = R.settings();
   const words = norm(disc.q).split(/\s+/).filter(Boolean);
-  let list = DB.list.filter(r =>
-    (!disc.type || r.t === disc.type) && (!disc.cuisine || r.c === disc.cuisine) &&
-    (!disc.quick || (r.tm && r.tm <= 30)) && (!disc.easy || r.d <= 1) && (!disc.cheap || r.p <= 1) &&
-    !R.isExcluded(r, st) && (!words.length || matchQuery(r, words)));
+  let hidden = 0;
+  let list = DB.list.filter(r => {
+    if (!((!disc.type || r.t === disc.type) && (!disc.cuisine || r.c === disc.cuisine) &&
+      (!disc.quick || (r.tm && r.tm <= 30)) && (!disc.easy || r.d <= 1) && (!disc.cheap || r.p <= 1) &&
+      (!words.length || matchQuery(r, words)))) return false;
+    if (R.isExcluded(r, st)) { hidden++; return false; }
+    return true;
+  });
   list = R.ranked(list);
+  // résumé du profil appliqué : la liste se recalcule à chaque changement de préférences
+  const prefs = [];
+  if (st.exclusions.length) prefs.push(`🚫 ${st.exclusions.length} exclu${st.exclusions.length > 1 ? 's' : ''}`);
+  const missing = EQUIP.filter(([c]) => !st.equipment.includes(c)).length;
+  if (missing) prefs.push(`🍳 ${missing} appareil${missing > 1 ? 's' : ''} en moins`);
+  if (st.maxTime) prefs.push(`⏱ ${minutes(st.maxTime)} max`);
+  prefs.push(`🧭 découverte ${Math.round(st.discovery * 10)}/10`);
   const total = list.length; list = list.slice(0, disc.shown);
   const tchip = (v, l) => `<button class="fchip ${disc.type === v ? 'on' : ''}" data-act="dtype" data-v="${v}">${l}</button>`;
   const tog = (k, l) => `<button class="fchip ${disc[k] ? 'on' : ''}" data-act="dtog" data-k="${k}">${l}</button>`;
@@ -155,7 +166,8 @@ function renderDiscover(keepScroll) {
     <div class="fchips">${tchip('plat', 'Plats')}${tchip('entree', 'Entrées & soupes')}${tchip('dessert', 'Desserts')}${tchip('petit-dej', 'Petit-déj')}${tchip('boulangerie', 'Boulangerie')}${tchip('', 'Tout')}</div>
     <div class="fchips">${tog('quick', '⏱ ≤ 30 min')}${tog('easy', '👌 Très facile')}${tog('cheap', '€ Bon marché')}
       <button class="fchip ${disc.cuisine ? 'on' : ''}" data-act="dcuisine">🌍 ${esc(disc.cuisine || 'Tous pays')}</button></div>
-    <p class="muted small">${total.toLocaleString('fr-FR')} recette${total > 1 ? 's' : ''}${words.length ? '' : ', triées pour vous'}</p>
+    <p class="muted small">${total.toLocaleString('fr-FR')} recette${total > 1 ? 's' : ''}${words.length ? '' : ', triées pour vous'}${hidden ? ` · ${hidden.toLocaleString('fr-FR')} masquée${hidden > 1 ? 's' : ''} par votre profil` : ''}</p>
+    <button class="prefsum muted small" data-act="go" data-tab="profile">Selon votre profil : ${prefs.join(' · ')} ›</button>
     <div class="grid">${list.map(r => `
       <div class="card"><button data-act="open" data-id="${r.id}" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px">${plate(r)}
         <h3>${esc(name(r))}</h3></button>
@@ -165,10 +177,14 @@ function renderDiscover(keepScroll) {
     ${total > disc.shown ? `<div class="center" style="margin:20px"><button class="btn ghost" data-act="more" id="more">Voir plus</button></div>` : ''}
     ${!total ? `<div class="empty"><div class="ee">🤷</div><h2>Rien trouvé</h2><p class="muted">Essayez d'autres mots ou retirez des filtres.</p></div>` : ''}`;
   const y = window.scrollY;
+  // garder le clavier ouvert si la liste se rafraîchit pendant la saisie (synchro, préférences, notes)
+  const prev = document.activeElement?.id === 'q' ? document.activeElement : null;
+  const sel = prev ? [prev.selectionStart, prev.selectionEnd] : null;
   view.innerHTML = html;
   if (keepScroll) window.scrollTo(0, y);
   const q = $('#q');
-  q.addEventListener('input', () => { disc.q = q.value; disc.shown = 30; clearTimeout(q.t); q.t = setTimeout(() => { renderDiscover(); const n = $('#q'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); });
+  if (prev) { q.focus({ preventScroll: true }); try { q.setSelectionRange(...sel); } catch {} }
+  q.addEventListener('input', () => { disc.q = q.value; disc.shown = 30; clearTimeout(q.t); q.t = setTimeout(() => renderDiscover(), 250); });
   const more = $('#more');
   if (more && 'IntersectionObserver' in window) {
     const io = new IntersectionObserver(es => { if (es[0].isIntersecting) { io.disconnect(); disc.shown += 30; renderDiscover(true); } }, { rootMargin: '400px' });
@@ -474,6 +490,7 @@ function render() {
 }
 let rt = null;
 S.on(keys => {
+  if (tab !== 'discover' && (keys.includes('settings') || keys.includes('*'))) disc.shown = 30;
   clearTimeout(rt);
   rt = setTimeout(() => {
     const active = document.activeElement;
