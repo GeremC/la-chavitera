@@ -50,7 +50,9 @@ async function rpc(fn, body) {
   const url = cfg().SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/rpc/' + fn;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { apikey: cfg().SUPABASE_ANON_KEY, Authorization: 'Bearer ' + cfg().SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+    headers: cfg().SUPABASE_ANON_KEY.startsWith('sb_')
+      ? { apikey: cfg().SUPABASE_ANON_KEY, 'Content-Type': 'application/json' }  // nouvelle clé "publishable"
+      : { apikey: cfg().SUPABASE_ANON_KEY, Authorization: 'Bearer ' + cfg().SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + (await res.text()).slice(0, 120));

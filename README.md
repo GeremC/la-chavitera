@@ -18,8 +18,8 @@ Repo > **Settings > Pages > Source : GitHub Actions**.
 Chaque push sur `main` déploie le site sur `https://geremc.github.io/la-chavitera/`.
 
 ### 2. Générer la base de recettes (sans rien installer)
-1. Sur kaggle.com : Settings > API > **Create New Token** (télécharge `kaggle.json`)
-2. Repo > Settings > Secrets and variables > Actions : ajouter `KAGGLE_USERNAME` et `KAGGLE_KEY` (valeurs du fichier)
+1. Sur kaggle.com/settings/api : **Generate New Token** (ou « Create Legacy API Key » pour un kaggle.json)
+2. Repo > Settings > Secrets and variables > Actions : ajouter `KAGGLE_API_TOKEN` (nouveau jeton) ou bien `KAGGLE_USERNAME` + `KAGGLE_KEY` (ancien kaggle.json)
 3. Onglet **Actions > Construire les recettes > Run workflow**
 
 Le workflow télécharge le jeu « Food.com - Recipes and Reviews » (`irkaal/foodcom-recipes-and-reviews`), construit `data/`, commit et redéploie.
