@@ -91,7 +91,7 @@ function ring() {
   if (ringTimer) return;
   const once = () => {
     if (!timers.some(t => t.done) || Date.now() > ringUntil || document.visibilityState !== 'visible') { clearInterval(ringTimer); ringTimer = null; return; }
-    beep(); try { navigator.vibrate?.([200, 100, 200]); } catch {} haptic('strong');
+    beep(); if (navigator.userActivation?.hasBeenActive !== false) { try { navigator.vibrate?.([200, 100, 200]); } catch {} haptic('strong'); }
   };
   once(); ringTimer = setInterval(once, 1600);
 }
