@@ -14,11 +14,15 @@ const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '
 let tab = 'menu', sheetState = null, ingLex = null;
 const disc = { q: '', type: 'plat', cuisine: '', quick: false, easy: false, cheap: false, shown: 30 };
 const histOpen = new Set();
+let showDeleted = false;
 
 // ------------------------------------------------------------ helpers UI
-function toast(msg) {
-  const t = $('#toast'); t.textContent = msg; t.hidden = false;
-  clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 2200);
+function toast(msg, action) {
+  // action facultative : { label, act, id } affiche un bouton (ex. Annuler) et laisse le toast plus longtemps
+  const t = $('#toast');
+  t.innerHTML = esc(msg) + (action ? `<button class="tact" data-act="${action.act}" data-id="${esc(action.id)}">${esc(action.label)}</button>` : '');
+  t.classList.toggle('withact', !!action); t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, action ? 5000 : 2200);
 }
 function modal(html) {
   const bg = document.createElement('div'); bg.className = 'modal-bg';
@@ -280,6 +284,7 @@ function renderCook() {
   const card = ({ it, r }, i) => {
     const c = isCooked(m, r.id), rt = S.get('rate:' + r.id, {});
     return `<div class="cookcard ${c ? 'done' : ''}">
+      <button class="cdel" data-act="cdel" data-id="${r.id}" aria-label="Supprimer du menu">${ic('trash')}</button>
       <button class="cplate" data-act="open" data-id="${r.id}" data-ppl="${it.ppl}">${plate(r)}${c ? `<span class="cdone">${ic('check')}</span>` : ''}</button>
       <div class="info">
         ${c ? '' : `<span class="cnum">Repas ${i + 1}</span>`}
@@ -302,11 +307,19 @@ function renderCook() {
 
 // ------------------------------------------------------------ vue Archives
 const fmtDate = t => new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+function deletedBlock() {
+  const ds = S.list('del:').map(([k, d]) => ({ k, ...d, r: DB.byId.get(d.id) })).filter(d => d.r).sort((a, b) => b.at - a.at);
+  if (!ds.length) return '';
+  return `<div class="delbar"><button class="linkbtn small muted" data-act="toggleDeleted">${ic('trash')} ${showDeleted ? 'Masquer' : 'Afficher'} les recettes supprimées (${ds.length})</button></div>
+    ${showDeleted ? `<div class="hist deleted"><h3>Recettes supprimées</h3><p class="muted small" style="margin:2px 0 6px">Retirées de Cuisiner, elles ne sont pas dans les archives.</p><div class="list">${ds.map(d =>
+      `<div class="li"><span class="nmwrap" data-act="open" data-id="${d.r.id}" data-ppl="${d.ppl || ''}">${d.r.img ? `<img src="${esc(d.r.img)}" loading="lazy" alt="" data-fb="${d.r.t}">` : `<div class="ph">${typeIcon(d.r.t)}</div>`}<span class="nm">${esc(name(d.r))}<span class="muted small" style="display:block">Supprimée le ${fmtDate(d.at)}</span></span></span>
+        <button class="pill" data-act="restoreDel" data-id="${d.k}">${ic('undo')} Remettre</button><button class="round sm" data-act="purgeDel" data-id="${d.k}" aria-label="Effacer définitivement">${ic('x')}</button></div>`).join('')}</div></div>` : ''}`;
+}
 function renderHistory() {
   setTitle('Archives');
   const hs = S.list('hist:').map(([, h]) => h).sort((a, b) => b.date - a.date);
   if (!hs.length) {
-    view.innerHTML = `<div class="empty"><div class="ee">${ic('book')}</div><h2>Aucun menu archivé</h2><p class="muted">Quand une semaine est finie, appuyez sur « Semaine terminée » dans votre menu : elle arrive ici.</p></div>`;
+    view.innerHTML = `<div class="empty"><div class="ee">${ic('book')}</div><h2>Aucun menu archivé</h2><p class="muted">Quand une semaine est finie, appuyez sur « Semaine terminée » dans votre menu : elle arrive ici.</p></div>${deletedBlock()}`;
     return;
   }
   view.innerHTML = hs.map(h => {
@@ -323,7 +336,7 @@ function renderHistory() {
         <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn small" data-act="redo" data-id="${h.id}">${ic('redo')} Refaire ce menu</button>
         <button class="pill" data-act="hrate" data-id="${h.id}">Noter</button><span class="spacer"></span><button class="pill" data-act="hdel" data-id="${h.id}" aria-label="Supprimer">${ic('trash')}</button></div></div>` : ''}
     </div>`;
-  }).join('');
+  }).join('') + deletedBlock();
 }
 
 // ------------------------------------------------------------ vue Profil
@@ -496,6 +509,27 @@ const A = {
     was ? S.del(k) : S.set(k, true);
     if (!was && !S.get('rate:' + id, {}).thumb) askRatings([id], 'Alors, c\'était bon ?');
   },
+  cdel: el => {
+    const m = menu(), id = +el.dataset.id, idx = m.items.findIndex(i => i.id === id);
+    if (idx < 0) return;
+    const key = S.uid();
+    S.set('del:' + key, { id, ppl: m.items[idx].ppl, idx, menu: m.id, at: Date.now() });
+    removeFromMenu(id);
+    toast('Recette supprimée', { label: 'Annuler', act: 'restoreDel', id: key });
+  },
+  restoreDel: el => {
+    const k = 'del:' + el.dataset.id, d = S.get(k); if (!d) return;
+    const m = menu();
+    if (!m.items.some(i => i.id === d.id)) {
+      // même semaine : on la remet à sa place, sinon à la fin du menu actuel
+      const at = d.menu === m.id ? Math.min(d.idx ?? m.items.length, m.items.length) : m.items.length;
+      m.items.splice(at, 0, { id: d.id, ppl: d.ppl || R.settings().people }); saveMenu(m);
+    }
+    S.del(k); $('#toast').hidden = true;
+    if (el.closest('#toast') == null) toast('Recette remise dans le menu');
+  },
+  purgeDel: el => { if (confirm('Effacer définitivement cette recette de la liste ?')) S.del('del:' + el.dataset.id); },
+  toggleDeleted: () => { showDeleted = !showDeleted; renderHistory(); },
   check: el => { const k = `check:${menu().id}:${el.dataset.k}`; S.set(k, !S.get(k, false)); },
   xcheck: el => { const k = `extra:${menu().id}:${el.dataset.id}`; const e = S.get(k); if (e) S.set(k, { ...e, done: !e.done }); },
   xdel: el => S.del(`extra:${menu().id}:${el.dataset.id}`),
