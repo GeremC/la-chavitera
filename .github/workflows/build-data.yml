@@ -1,0 +1,60 @@
+name: Construire les recettes
+on:
+  workflow_dispatch:
+    inputs:
+      min_rating:
+        description: "Note minimale"
+        default: "4.5"
+      min_reviews:
+        description: "Nombre d'avis minimum"
+        default: "10"
+      recipenlg_dataset:
+        description: "(Optionnel) Dataset Kaggle RecipeNLG pour récupérer les unités, ex: owner/recipenlg"
+        default: ""
+      recipenlg_file:
+        description: "(Optionnel) Nom du fichier CSV dans ce dataset"
+        default: "RecipeNLG_dataset.csv"
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pandas pyarrow kaggle
+      - name: Télécharger Food.com depuis Kaggle
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          mkdir -p raw
+          kaggle datasets download -d irkaal/foodcom-recipes-and-reviews -f recipes.parquet -p raw
+          cd raw && for z in *.zip; do [ -f "$z" ] && unzip -o "$z" && rm "$z"; done; ls -la
+      - name: (Optionnel) Télécharger RecipeNLG
+        if: ${{ inputs.recipenlg_dataset != '' }}
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          kaggle datasets download -d "${{ inputs.recipenlg_dataset }}" -f "${{ inputs.recipenlg_file }}" -p raw
+          cd raw && for z in *.zip; do [ -f "$z" ] && unzip -o "$z" && rm "$z"; done; ls -la
+      - name: Construire la base
+        run: |
+          EXTRA=""
+          [ -n "${{ inputs.recipenlg_dataset }}" ] && EXTRA="--recipenlg raw/${{ inputs.recipenlg_file }}"
+          python tools/build_data.py raw/recipes.parquet --min-rating ${{ inputs.min_rating }} --min-reviews ${{ inputs.min_reviews }} $EXTRA
+      - name: Commit des données
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data tools/top300_to_translate.json tools/unknown_ingredients.txt
+          git commit -m "Données recettes mises à jour" || echo "Rien à commiter"
+          git push
+  deploy:
+    needs: build
+    uses: ./.github/workflows/pages.yml

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>La Chavitera</title>
+  <meta name="theme-color" content="#FDF3E8">
+  <meta name="description" content="Choisissez vos recettes, la liste de courses se fait toute seule.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="La Chavitera">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar" id="topbar"><h1 id="title">Mon menu</h1><div id="topActions"></div></header>
+    <main id="view"></main>
+    <nav class="tabs" id="tabs">
+      <button data-tab="menu" class="on"><span class="ti">🍽️</span>Menu</button>
+      <button data-tab="discover"><span class="ti">🔎</span>Découvrir</button>
+      <button data-tab="shop"><span class="ti">🛒</span>Courses<b class="badge" id="shopBadge" hidden></b></button>
+      <button data-tab="history"><span class="ti">📖</span>Historique</button>
+      <button data-tab="profile"><span class="ti">👤</span>Profil</button>
+    </nav>
+  </div>
+  <div id="sheet" class="sheet" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+  <script src="config.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "La Chavitera",
+  "short_name": "La Chavitera",
+  "description": "Choisissez vos recettes, la liste de courses se fait toute seule.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FDF3E8",
+  "theme_color": "#FDF3E8",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
