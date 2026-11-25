@@ -96,22 +96,39 @@ def singular(w):
     return w
 
 
+# mots « tête » : s'ils sont retirés, l'ingrédient change de nature (apple pie spice != apple)
+HEADS = {"spice", "spices", "pudding", "sauce", "butter", "mix", "juice", "extract", "oil", "paste", "seasoning",
+         "vinegar", "syrup", "cake", "pie", "soup", "dressing", "powder", "jam", "jelly", "chips", "crackers",
+         "cookies", "filling", "frosting", "liqueur", "wine", "milk", "cream", "yogurt", "flakes", "salt", "sugar"}
+# un seul mot générique en fin de nom ne suffit pas (almond butter != butter, tuna in water != water)
+WEAK_SUFFIX = {"water", "butter", "milk", "oil", "juice", "sauce", "powder", "cream", "mix", "spice", "leaves",
+               "seeds", "sugar", "salt", "extract", "paste"}
+
+
 def candidates(key):
-    k = norm(key)
+    k = norm(re.sub(r"\b(packed )?in (water|oil|juice|syrup|brine)\b.*$", "", norm(key)))
     if k in ALIAS: yield ALIAS[k]
     yield k
     words = k.split()
     yield " ".join(singular(w) for w in words)
-    # sous-expressions de droite à gauche : "boneless chicken breast" -> "chicken breast" -> "breast"
+    # sous-expressions de droite (le nom principal est en fin) : "boneless chicken breast" -> "chicken breast"
     for i in range(1, len(words)):
-        sub = " ".join(words[i:])
-        if sub in ALIAS: yield ALIAS[sub]
-        yield sub
-        yield " ".join(singular(w) for w in words[i:])
+        sub = words[i:]
+        if sub[0] in HEADS and len(sub) == 1 and len(words) > 1 and sub[0] in WEAK_SUFFIX:
+            continue
+        if len(sub) == 1 and sub[0] in WEAK_SUFFIX:
+            continue
+        s = " ".join(sub)
+        if s in ALIAS: yield ALIAS[s]
+        yield s
+        yield " ".join(singular(w) for w in sub)
+    # sous-expressions de gauche, seulement si on ne retire pas le mot « tête »
     for i in range(len(words) - 1, 0, -1):
-        sub = " ".join(words[:i])
-        if sub in ALIAS: yield ALIAS[sub]
-        yield sub
+        if any(w in HEADS or singular(w) in HEADS for w in words[i:]):
+            continue
+        s = " ".join(words[:i])
+        if s in ALIAS: yield ALIAS[s]
+        yield s
 
 
 def main():
@@ -133,7 +150,7 @@ def main():
         if hit: out[key] = hit
         else: miss.append((count, key))
     (ROOT / "data" / "ing_img.json").write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":"), sort_keys=True), "utf-8")
-    covered = sum(c for _, _, c in ings if _ in out) if False else sum(c for k, _, c in ings if k in out)
+    covered = sum(c for k, _, c in ings if k in out)
     total = sum(c for _, _, c in ings)
     print(f"{len(out)}/{len(ings)} ingrédients avec photo ({covered / max(total, 1):.0%} des usages). "
           f"Sans photo (top 30) : {', '.join(k for _, k in sorted(miss, reverse=True)[:30])}")
