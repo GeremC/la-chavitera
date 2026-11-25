@@ -391,7 +391,6 @@ body:has(#timers:not([hidden])) .sheet .inner{padding-bottom:calc(190px + var(--
 .search.fake{flex:1;margin:0;padding:13px 16px;gap:10px;color:var(--muted);font-size:16px;text-align:left;box-shadow:var(--shadow)}
 .search.fake .i{font-size:19px;color:var(--ink)}
 .favbtn{position:relative;width:50px;height:50px;flex:none;border-radius:50%;background:var(--white);border:1.5px solid var(--line);color:var(--red);font-size:22px;line-height:0;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
-.favbtn b{position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;border-radius:10px;font-size:11px;line-height:1;padding:3px 6px;font-weight:600}
 .search .i{flex:none}
 .seg{display:flex;background:var(--cream2);border-radius:999px;padding:3px;margin:0 0 10px}
 .seg button{flex:1;border-radius:999px;padding:8px 10px;font-size:14px;font-weight:500;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background-color .2s,color .2s}
