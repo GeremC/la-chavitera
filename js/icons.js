@@ -20,6 +20,8 @@ const P = {
   checks: '<path d="m2.5 12.5 4.5 4.5L16.5 7.5"/><path d="m12.5 16 1 1L23 7.5"/>',
   back: '<path d="m15 5-7 7 7 7"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  sliders: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  chevron: '<path d="m9 5 7 7-7 7"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7"/>',
