@@ -17,6 +17,13 @@ let tab = 'menu', sheetState = null, ingLex = null;
 const disc = { q: '', scope: 'all', type: 'plat', cuisine: '', quick: false, easy: false, cheap: false, shown: 30, focus: false };
 const favIds = () => S.list('fav:').map(([k]) => +k).filter(id => DB.byId.has(id));
 const discDefaultType = () => disc.scope === 'fav' ? '' : 'plat';
+// la recherche et « Ajouter » ouvrent toujours sur Toutes les recettes ; seul le cœur ouvre les Favoris
+function discScope(v) {
+  if (disc.scope === v) return;
+  const wasDefault = disc.type === discDefaultType();
+  disc.scope = v; if (wasDefault) disc.type = discDefaultType();
+  disc.shown = 30;
+}
 const histOpen = new Set();
 let showDeleted = false;
 
@@ -447,7 +454,20 @@ function closeSheet(instant) {
   sheet.classList.add('closing');
   setTimeout(() => { sheet.classList.remove('closing'); if (!sheetState) { sheet.hidden = true; sheet.innerHTML = ''; } }, 220);
 }
+let lastExitTry = 0;
 window.addEventListener('popstate', e => {
+  // entrée « garde » sous Choisir : le retour ne quitte plus l'app d'un coup (écran noir sur Android)
+  if (history.state && history.state.guard) {
+    if (Date.now() - lastExitTry < 2500) { history.back(); return; }
+    lastExitTry = Date.now();
+    history.pushState({ tab: 'menu', d: 0 }, '');
+    document.querySelectorAll('.modal-bg').forEach(m => m.remove());
+    if (!sheet.hidden) closeSheet(true);
+    pendingTab = null;
+    if (tab !== 'menu') switchTab('menu', { fromPop: true, noAnim: true });
+    toast('Appuyez encore sur retour pour quitter');
+    return;
+  }
   const st = navState();
   // le navigateur a déjà animé le retour (geste iOS, retour prédictif Android) : pas de seconde animation
   const uaAnim = !!e.hasUAVisualTransition;
@@ -528,7 +548,7 @@ async function renderSheet(top) {
 
 // ------------------------------------------------------------ actions
 const A = {
-  go: el => switchTab(el.dataset.tab),
+  go: el => { if (el.dataset.tab === 'discover') discScope('all'); switchTab(el.dataset.tab); },
   open: el => openRecipe(+el.dataset.id, +el.dataset.ppl || 0),
   close: () => { if (navState().sheet) history.back(); else closeSheet(); },
   closeModal: el => closeModalEl(el.closest('.modal-bg')),
@@ -558,7 +578,7 @@ const A = {
     const mb = el.closest('.modal'); if (mb) { mb.querySelectorAll(`[data-id="${el.dataset.id}"]`).forEach(b => b.removeAttribute('style')); if (v === 1) el.style.cssText = 'background:var(--green);color:#fff'; if (v === -1) el.style.cssText = 'background:var(--ink);color:var(--on-ink)'; }
   },
   stars: el => { const k = 'rate:' + el.dataset.id, cur = S.get(k, {}); S.set(k, { ...cur, stars: +el.dataset.v, thumb: cur.thumb || (+el.dataset.v >= 4 ? 1 : +el.dataset.v <= 2 ? -1 : 0), at: Date.now() }); toast('Merci, c\'est noté'); },
-  openSearch: () => { disc.focus = true; switchTab('discover'); },
+  openSearch: () => { discScope('all'); disc.focus = true; switchTab('discover'); },
   openFavs: () => { if (disc.scope !== 'fav') { disc.scope = 'fav'; disc.type = ''; } disc.shown = 30; switchTab('discover'); },
   dscope: el => {
     const v = el.dataset.v; if (v === disc.scope) return;
@@ -716,7 +736,8 @@ async function boot() {
   }
   loadLex();
   try { const r = await fetch('data/ing_img.json?v=' + DB.meta.v); if (r.ok) ingImg = await r.json(); } catch {}
-  navReplace({ tab: 'menu', d: 0 });
+  navReplace({ guard: 1, d: -1 });
+  history.pushState({ tab: 'menu', d: 0 }, '');
   render();
   S.startSync();
 }
