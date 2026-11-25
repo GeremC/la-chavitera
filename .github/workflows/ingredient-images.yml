@@ -1,0 +1,24 @@
+name: Photos des ingrédients
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/ingredient-images]
+    paths: [tools/ingredient_images.py, data/ingredients.json]
+permissions:
+  contents: write
+jobs:
+  match:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python tools/ingredient_images.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/ing_img.json
+          git commit -m "Photos des ingrédients mises à jour" || echo "Rien à commiter"
+          git push

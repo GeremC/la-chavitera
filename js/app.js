@@ -34,8 +34,15 @@ document.addEventListener('error', e => {
   const el = e.target;
   if (el.tagName === 'IMG' && 'fb' in el.dataset) {
     const d = document.createElement('div'); d.className = el.className + ' ph'; d.innerHTML = typeIcon(el.dataset.fb); el.replaceWith(d);
+  } else if (el.tagName === 'IMG' && 'fbi' in el.dataset) {
+    const d = document.createElement('span'); d.innerHTML = ingIcon(el.dataset.fbi); el.replaceWith(d.firstChild);
   }
 }, true);
+// photos d'ingrédients (TheMealDB, associées par tools/ingredient_images.py), icône SVG sinon
+let ingImg = {};
+const ingPic = (k, n) => ingImg[k]
+  ? `<img class="ingpic" loading="lazy" alt="" src="https://www.themealdb.com/images/ingredients/${encodeURIComponent(ingImg[k])}-Small.png" data-fbi="${esc(n)}">`
+  : ingIcon(n);
 const stepper = (act, id, val, suffix = '') =>
   `<span class="stepper"><button data-act="${act}" data-id="${id}" data-d="-1" aria-label="Moins">${ic('minus')}</button><span>${val}${suffix}</span><button data-act="${act}" data-id="${id}" data-d="1" aria-label="Plus">${ic('plus')}</button></span>`;
 function setTitle(t, actions = '') { $('#title').innerHTML = t; $('#topActions').innerHTML = actions; }
@@ -202,7 +209,7 @@ async function shoppingList(m) {
       const label = cap(e.fr || e.n);
       const fam = unitFamily(e.u);
       const key = norm(label).replace(/(\w)s\b/g, '$1') + '|' + fam;
-      if (!agg.has(key)) agg.set(key, { key, label, aisle: e.a || 'Autres', pantry: !!e.p, fam, q: 0, hasQ: false, units: new Set(), from: new Set(), en: e.n });
+      if (!agg.has(key)) agg.set(key, { key, label, aisle: e.a || 'Autres', pantry: !!e.p, fam, q: 0, hasQ: false, units: new Set(), from: new Set(), en: e.n, k: e.k });
       const a = agg.get(key);
       if (e.q != null) { a.q += toBase(e.q * f, e.u); a.hasQ = true; if (e.u) a.units.add(e.u); }
       a.from.add(name(r));
@@ -232,7 +239,7 @@ async function renderShop() {
   const doneN = main.filter(i => ck(i.key)).length + extras.filter(([, e]) => e.done).length;
   const totalN = main.length + extras.length;
   const row = i => `<div class="item ${ck(i.key) ? 'done' : ''}" data-act="check" data-k="${esc(i.key)}">
-      <span class="box">${ck(i.key) ? ic('check') : ''}</span><div class="it">${esc(i.label)}<div class="from">${esc([...i.from].join(' · '))}</div></div><span class="qty">${esc(i.qty)}</span></div>`;
+      <span class="box">${ck(i.key) ? ic('check') : ''}</span><span class="thumb">${ingPic(i.k, i.en)}</span><div class="it">${esc(i.label)}<div class="from">${esc([...i.from].join(' · '))}</div></div><span class="qty">${esc(i.qty)}</span></div>`;
   const groups = AISLE_ORDER.map(a => [a, main.filter(i => i.aisle === a)]).filter(([, l]) => l.length);
   const done = S.get(`shopdone:${m.id}`, 0);
   const allChecked = totalN > 0 && doneN === totalN;
@@ -432,7 +439,7 @@ async function renderSheet(top) {
     <div class="block"><h3>Ingrédients</h3>
       <div class="forppl">Pour ${stepper('sppl', id, ppl, ic('users', 'sm'))}</div>
       ${!d.units ? `<p class="muted small center">La source ne précise pas toujours les unités : quantités indicatives (adaptées à ${ppl} pers.).</p>` : ''}
-      <div class="ings">${main.map(e => `<div class="ing"><div class="bub">${ingIcon(e.n)}</div><b>${e.q != null ? esc(fmtQty(e.q * f, e.u)) : ''}</b>${esc(cap(e.fr || e.n))}${e.raw && !e.fr ? `<div class="orig">${esc(e.raw)}</div>` : ''}</div>`).join('')}</div>
+      <div class="ings">${main.map(e => `<div class="ing"><div class="bub">${ingPic(e.k, e.n)}</div><b>${e.q != null ? esc(fmtQty(e.q * f, e.u)) : ''}</b>${esc(cap(e.fr || e.n))}${e.raw && !e.fr ? `<div class="orig">${esc(e.raw)}</div>` : ''}</div>`).join('')}</div>
       ${pantry.length ? `<div class="pantry"><b>Vérifiez que vous avez…</b><br><span class="muted">${pantry.map(e => esc(cap(e.fr || e.n)) + (e.q != null && e.u ? ' (' + esc(fmtQty(e.q * f, e.u)) + ')' : '')).join(' · ')}</span></div>` : ''}
     </div>
     <div class="block steps"><h3>Recette</h3>
@@ -591,6 +598,7 @@ async function boot() {
     return;
   }
   loadLex();
+  try { const r = await fetch('data/ing_img.json?v=' + DB.meta.v); if (r.ok) ingImg = await r.json(); } catch {}
   render();
   S.startSync();
 }

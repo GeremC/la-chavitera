@@ -47,7 +47,7 @@ self.addEventListener('fetch', e => {
     if (url.pathname.includes('/data/') && url.searchParams.has('v')) return e.respondWith(dataCacheFirst(req));
     return e.respondWith(networkFirst(req, url.pathname.includes('/data/') ? DATA : SHELL));
   }
-  if (url.host.includes('fonts.g')) {
+  if (url.host.includes('fonts.g') || url.host.includes('themealdb.com')) {
     e.respondWith(caches.open(DATA).then(async c => (await c.match(req)) || fetch(req).then(r => { c.put(req, r.clone()); return r; })));
   }
 });

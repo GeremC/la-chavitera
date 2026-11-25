@@ -216,6 +216,10 @@ details.aisle summary::-webkit-details-marker{display:none}
 .ing{text-align:center;font-size:14px;line-height:1.25}
 .ing .bub{width:84px;height:84px;border-radius:50%;background:var(--white);margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-size:36px;color:var(--red);box-shadow:var(--shadow)}
 .ing .bub .i{stroke-width:1.7}
+.ing .bub .ingpic{width:64px;height:64px;object-fit:contain}
+.item .thumb{width:36px;height:36px;flex:none;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--red)}
+.item .thumb .ingpic{width:36px;height:36px;object-fit:contain}
+.item.done .thumb{opacity:.45}
 .ing b{display:block;font-weight:600;font-size:16px;color:var(--red-d);min-height:1.25em}
 .ing .orig{font-size:11px;color:var(--muted)}
 .pantry{margin-top:18px;border-top:1.5px dotted var(--line);padding-top:14px;text-align:center}
