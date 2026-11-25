@@ -54,10 +54,10 @@ export function setHaptics(on) {
 
 // Niveau par action (data-act). Les actions absentes ont « light ».
 const LEVELS = {
-  danger: ['remove', 'sremove', 'xdel', 'hdel', 'leave', 'reset'],
+  danger: ['cdel', 'purgeDel', 'remove', 'sremove', 'xdel', 'hdel', 'leave', 'reset'],
   strong: ['fill', 'archive', 'sadd', 'redo', 'createHH', 'joinHH', 'closeModal', 'shopDone'],
   medium: ['add', 'toggleMenu', 'replace', 'open', 'fav', 'thumb', 'stars', 'shareMenu', 'shareList',
-    'copyCode', 'more', 'setCuisine', 'checkUpdate', 'addex', 'hrate', 'cooked'],
+    'copyCode', 'more', 'setCuisine', 'checkUpdate', 'addex', 'hrate', 'cooked', 'restoreDel'],
 };
 const BY_ACT = {};
 for (const [lvl, acts] of Object.entries(LEVELS)) acts.forEach(a => BY_ACT[a] = lvl);
