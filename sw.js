@@ -2,7 +2,7 @@
 const VERSION = '__BUILD__';
 const SHELL = 'lc-shell-' + VERSION, DATA = 'lc-data';
 const SHELL_FILES = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/store.js', 'js/data.js', 'js/reco.js',
-  'js/version.js', 'config.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
+  'js/version.js', 'js/haptic.js', 'config.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
