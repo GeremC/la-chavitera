@@ -91,10 +91,20 @@ function askRatings(ids, title) {
   m.classList.add('ratings');
 }
 
+// ------------------------------------------------------------ réglages (résumé compact, ouvre le profil)
+function settingsBar(st) {
+  const bits = [`${st.people} pers.`];
+  if (st.exclusions.length) bits.push(`${st.exclusions.length} exclu${st.exclusions.length > 1 ? 's' : ''}`);
+  const missing = EQUIP.filter(([c]) => !st.equipment.includes(c)).length;
+  if (missing) bits.push(`${missing} appareil${missing > 1 ? 's' : ''} en moins`);
+  if (st.maxTime) bits.push(`${minutes(st.maxTime)} max`);
+  bits.push(`découverte ${Math.round(st.discovery * 10)}/10`);
+  return `<button class="setbar" data-act="go" data-tab="profile"><span class="si">${ic('sliders')}</span><span class="sl"><b>Réglages</b><span>${esc(bits.join(' · '))}</span></span>${ic('chevron', 'sm')}</button>`;
+}
+
 // ------------------------------------------------------------ vue Menu
 function renderMenu() {
   const st = R.settings(), m = menu(), prof = R.tasteProfile();
-  const nEx = st.exclusions.length, nEq = st.equipment.length;
   setTitle('Préparer les menus', `<button class="ib" data-act="shareMenu" aria-label="Partager">${ic('share')}</button>`);
   const old = m.items.length && Date.now() - m.created > 6 * 86400000;
   const items = m.items.map(it => {
@@ -113,14 +123,8 @@ function renderMenu() {
   const ex = new Set(m.items.map(i => i.id));
   const extras = R.suggest(3, { exclude: ex, types: ['dessert', 'entree'] });
   view.innerHTML = `
-    <div class="prefbar">
-      <button data-act="go" data-tab="profile"><span class="pi">${ic('users')}<b>${st.people}</b></span>Foyer</button>
-      <button data-act="go" data-tab="profile"><span class="pi ${nEx ? '' : 'off'}">${ic('ban')}${nEx ? `<b>${nEx}</b>` : ''}</span>Exclusions</button>
-      <button data-act="go" data-tab="profile"><span class="pi">${ic('pan')}<b>${nEq}</b></span>Équipement</button>
-      <button data-act="go" data-tab="profile"><span class="pi">${ic('compass')}<b>${Math.round(st.discovery * 10)}</b></span>Découverte</button>
-    </div>
+    ${settingsBar(st)}
     ${old ? `<div class="banner yellow"><span class="be">${ic('calendar')}</span><div class="spacer"><b style="background:none;color:inherit;padding:0">Nouvelle semaine ?</b><br><span class="small">Archivez ce menu pour le retrouver dans les archives.</span></div><button class="btn small" data-act="archive">Archiver</button></div>` : ''}
-    ${!prof.size ? `<div class="banner"><span class="be">${ic('chef')}</span><div>Notez les recettes après les avoir cuisinées : <b>${ic('thumbUp', 'sm')} / ${ic('thumbDown', 'sm')}</b> et les suggestions s'adaptent à vos goûts.</div></div>` : ''}
     <div class="row" style="margin:20px 0 4px">${stepper('meals', 0, m.items.length)} <span style="font-size:20px">repas</span><span class="spacer"></span>
       <button class="btn" data-act="go" data-tab="discover">${ic('plus')} Ajouter</button></div>
     ${m.items.length ? items : `<div class="empty"><div class="ee">${ic('utensils')}</div><h2>Menu vide</h2><p class="muted">On vous propose ${st.meals} recettes selon vos goûts ?</p><button class="btn" data-act="fill">Générer mon menu</button></div>`}
@@ -153,13 +157,6 @@ function renderDiscover(keepScroll) {
     return true;
   });
   list = R.ranked(list);
-  // résumé du profil appliqué : la liste se recalcule à chaque changement de préférences
-  const prefs = [];
-  if (st.exclusions.length) prefs.push(`${ic('ban', 'sm')} ${st.exclusions.length} exclu${st.exclusions.length > 1 ? 's' : ''}`);
-  const missing = EQUIP.filter(([c]) => !st.equipment.includes(c)).length;
-  if (missing) prefs.push(`${ic('pan', 'sm')} ${missing} appareil${missing > 1 ? 's' : ''} en moins`);
-  if (st.maxTime) prefs.push(`${ic('clock', 'sm')} ${minutes(st.maxTime)} max`);
-  prefs.push(`${ic('compass', 'sm')} découverte ${Math.round(st.discovery * 10)}/10`);
   const total = list.length; list = list.slice(0, disc.shown);
   const tchip = (v, l) => `<button class="fchip ${disc.type === v ? 'on' : ''}" data-act="dtype" data-v="${v}">${l}</button>`;
   const tog = (k, l) => `<button class="fchip ${disc[k] ? 'on' : ''}" data-act="dtog" data-k="${k}">${l}</button>`;
@@ -168,8 +165,8 @@ function renderDiscover(keepScroll) {
     <div class="fchips">${tchip('plat', 'Plats')}${tchip('entree', 'Entrées & soupes')}${tchip('dessert', 'Desserts')}${tchip('petit-dej', 'Petit-déj')}${tchip('boulangerie', 'Boulangerie')}${tchip('', 'Tout')}</div>
     <div class="fchips">${tog('quick', ic('clock', 'sm') + ' ≤ 30 min')}${tog('easy', ic('sparkle', 'sm') + ' Très facile')}${tog('cheap', ic('euro', 'sm') + ' Bon marché')}
       <button class="fchip ${disc.cuisine ? 'on' : ''}" data-act="dcuisine">${ic('globe', 'sm')} ${esc(disc.cuisine || 'Tous pays')}</button></div>
+    ${settingsBar(st)}
     <p class="muted small">${total.toLocaleString('fr-FR')} recette${total > 1 ? 's' : ''}${words.length ? '' : ', triées pour vous'}${hidden ? ` · ${hidden.toLocaleString('fr-FR')} masquée${hidden > 1 ? 's' : ''} par votre profil` : ''}</p>
-    <button class="prefsum muted small" data-act="go" data-tab="profile">Selon votre profil : ${prefs.join(' · ')} ›</button>
     <div class="grid">${list.map(r => `
       <div class="card"><button data-act="open" data-id="${r.id}" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px">${plate(r)}
         <h3>${esc(name(r))}</h3></button>
