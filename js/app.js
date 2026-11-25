@@ -5,6 +5,8 @@ import * as R from './reco.js';
 import { ic, ingIcon, typeIcon } from './icons.js';
 import { APP_VERSION } from './version.js';
 import { haptic, levelFor, hapticsOn, hapticsSupported, setHaptics } from './haptic.js';
+import { structureSteps, ingMatcher, renderStepText, fmtDur } from './steps.js';
+import * as T from './timers.js';
 
 const $ = s => document.querySelector(s);
 const view = $('#view'), sheet = $('#sheet');
@@ -418,6 +420,23 @@ function closeSheet() {
 }
 window.addEventListener('popstate', () => { if (!sheet.hidden) closeSheet(); });
 
+// texte des étapes : grandes parties, ingrédients illustrés, durées → minuteur, températures
+function stepsHtml(steps, ings, f) {
+  const find = ingMatcher(ings);
+  sheetState.ings = ings.map(e => ({ label: cap(e.fr || e.n), qty: e.q != null ? fmtQty(e.q * f, e.u) : '' }));
+  return structureSteps(steps).map(x => {
+    if (x.kind === 'section') return `<div class="stsec ${x.note ? 'note' : ''}"><span>${x.note ? ic('info', 'sm') + ' ' : ''}${esc(x.title)}</span></div>`;
+    const body = renderStepText(x.text, {
+      ing: find,
+      ingHtml: (i, t) => `<button class="ingref" data-act="ingtip" data-i="${i}"><span class="ii">${ingPic(ings[i].k, ings[i].n)}</span>${esc(t)}</button>`,
+      timerHtml: (d, t) => `<button class="tmchip" data-act="timerStart" data-s="${d.sec}" data-n="${x.n || ''}" aria-label="Lancer un minuteur de ${fmtDur(d.sec)}">${ic('timer', 'sm')}${esc(t)}</button>`,
+      tempHtml: t => `<span class="tempchip">${ic('thermo', 'sm')}${esc(t)}</span>`,
+    });
+    if (x.note) return `<div class="stnote">${x.label ? `<b>${esc(x.label)} : </b>` : ''}${body}</div>`;
+    return `<div class="step"><span class="n">${x.n}</span><div class="tx"><div class="lbl">Étape ${x.n}</div>${body}</div></div>`;
+  }).join('');
+}
+
 async function renderSheet(top) {
   if (!sheetState) return;
   const { id, ppl, showEn } = sheetState;
@@ -457,7 +476,7 @@ async function renderSheet(top) {
     </div>
     <div class="block steps"><h3>Recette</h3>
       ${d.stEn ? `<div class="center" style="margin-bottom:8px"><button class="pill" data-act="toggleEn">${showEn ? 'Voir en français' : 'Voir la version originale (anglais)'}</button></div>` : ''}
-      ${steps.map((s, i) => `<div class="step"><span class="n">${i + 1}</span><div class="tx"><div class="lbl">Étape ${i + 1}</div>${esc(s)}</div></div>`).join('')}
+      ${stepsHtml(steps, d.ing, f)}
     </div>
     <div class="rate"><h3>Vous l'avez cuisinée ?</h3>
       <div class="thumbs"><button class="${rt.thumb === 1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="1" aria-label="J'ai aimé">${ic('thumbUp')}</button><button class="${rt.thumb === -1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="-1" aria-label="Bof">${ic('thumbDown')}</button></div>
@@ -486,6 +505,14 @@ const A = {
   sremove: el => removeFromMenu(+el.dataset.id),
   sppl: el => { sheetState.ppl = Math.max(1, Math.min(20, sheetState.ppl + +el.dataset.d)); const m = menu(); const it = m.items.find(i => i.id === sheetState.id); if (it) { it.ppl = sheetState.ppl; saveMenu(m); } else renderSheet(); },
   toggleEn: () => { sheetState.showEn = !sheetState.showEn; renderSheet(); },
+  ingtip: el => { const e = sheetState?.ings?.[+el.dataset.i]; if (e) toast(e.qty ? `${e.label} : ${e.qty}` : e.label); },
+  timerStart: el => {
+    const sec = +el.dataset.s, n = el.dataset.n, r = sheetState && DB.byId.get(sheetState.id);
+    const dup = T.all().find(t => !t.done && t.rid === r?.id && t.dur === sec * 1000 && Date.now() - (t.end - t.dur) < 4000);
+    if (dup) return;
+    T.start({ sec, label: (n ? `Étape ${n} · ` : '') + fmtDur(sec), sub: r ? name(r) : '', rid: r?.id ?? null });
+    toast(`Minuteur lancé : ${fmtDur(sec)}`);
+  },
   fav: el => { const k = 'fav:' + el.dataset.id; S.get(k) ? S.del(k) : S.set(k, true); },
   thumb: el => {
     const k = 'rate:' + el.dataset.id, cur = S.get(k, {}), v = +el.dataset.v;
@@ -636,6 +663,7 @@ async function boot() {
   render();
   S.startSync();
 }
+T.mount({ openRecipe: id => openRecipe(id) });
 boot();
 
 // service worker : mises à jour automatiques
