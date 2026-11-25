@@ -77,10 +77,55 @@ const stepper = (act, id, val, suffix = '') =>
   `<span class="stepper"><button data-act="${act}" data-id="${id}" data-d="-1" aria-label="Moins">${ic('minus')}</button><span>${val}${suffix}</span><button data-act="${act}" data-id="${id}" data-d="1" aria-label="Plus">${ic('plus')}</button></span>`;
 function setTitle(t, actions = '') { $('#title').innerHTML = t; $('#topActions').innerHTML = actions; }
 
-// ------------------------------------------------------------ menu
-const menu = () => S.get('menu') || { id: S.uid(), created: Date.now(), items: [] };
+// ------------------------------------------------------------ menus
+// Plusieurs menus peuvent être en cours en même temps ; chacun a sa liste de courses
+// (cases cochées, articles en plus, validation) et son suivi « Cuisiner », clés par id du menu.
+// Stockage : une clé par menu (amenu:<id>) pour que la synchro fusionne menu par menu.
+// Le menu « courant » (celui qu'on prépare) est un choix propre à chaque téléphone.
+const LS_CUR = 'lc_cur_menu';
+let draft = null;                       // menu vide pas encore enregistré
+const newMenu = () => ({ id: S.uid(), created: Date.now(), items: [] });
+function migrateMenu() {
+  // ancien format : une seule clé « menu » (peut aussi venir d'un téléphone pas encore à jour)
+  const old = S.get('menu');
+  if (!old || !old.id) return;
+  if (old.items?.length || S.get('amenu:' + old.id)) S.set('amenu:' + old.id, { ...(S.get('amenu:' + old.id) || {}), ...old });
+  S.del('menu');
+}
+const menus = () => S.list('amenu:').map(([, m]) => m).filter(m => m && m.id && Array.isArray(m.items)).sort((a, b) => a.created - b.created);
+const activeMenus = () => menus().filter(m => m.items.length);
+const getMenu = id => { const m = S.get('amenu:' + id); return m && Array.isArray(m.items) ? m : null; };
+function curId() { try { return localStorage.getItem(LS_CUR) || ''; } catch { return ''; } }
+function setCur(id) { try { localStorage.setItem(LS_CUR, id); } catch {} }
+function menu() {
+  const m = getMenu(curId());
+  if (m) return m;
+  if (draft && draft.id === curId()) return draft;
+  const all = menus();
+  if (all.length) { const last = all[all.length - 1]; setCur(last.id); return last; }
+  draft = newMenu(); setCur(draft.id); return draft;
+}
+const shortDate = t => new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+function menuName(m) {
+  if (m.name) return m.name;
+  const base = 'Menu du ' + shortDate(m.created);
+  const same = menus().filter(x => !x.name && x.id !== m.id && x.created < m.created && shortDate(x.created) === shortDate(m.created)).length;
+  return same ? `${base} (${same + 1})` : base;
+}
 const inMenu = id => menu().items.some(i => i.id === id);
-function saveMenu(m) { S.set('menu', m); }
+function saveMenu(m) { S.set('amenu:' + m.id, m); if (draft && draft.id === m.id) draft = null; }
+function startNewMenu() {
+  const cur = menu();
+  if (!cur.items.length && !getMenu(cur.id)) return cur; // déjà sur un menu vide
+  draft = newMenu(); setCur(draft.id); return draft;
+}
+let undoMenus = [], dishUndo = null;
+function deleteMenus(ids) {
+  undoMenus = ids.map(getMenu).filter(Boolean);
+  if (!undoMenus.length) return;
+  undoMenus.forEach(m => S.del('amenu:' + m.id));
+  toast(undoMenus.length > 1 ? `${undoMenus.length} menus supprimés` : 'Menu supprimé', { label: 'Annuler', act: 'undoMenus', id: '' });
+}
 function addToMenu(id, ppl) {
   const m = menu(); if (m.items.some(i => i.id === id)) return;
   m.items.push({ id, ppl: ppl || R.settings().people }); saveMenu(m); toast('Ajouté au menu');
@@ -105,14 +150,15 @@ function fillMenu(target) {
   } else if (cur.length > target) m.items = m.items.slice(0, target);
   saveMenu(m);
 }
-function archiveWeek() {
-  const m = menu();
+function archiveWeek(mid) {
+  const m = (mid && getMenu(mid)) || menu();
   if (!m.items.length) return toast('Le menu est vide');
-  S.set('hist:' + m.id, { id: m.id, date: Date.now(), created: m.created, items: m.items });
-  S.set('menu', { id: S.uid(), created: Date.now(), items: [] });
+  S.set('hist:' + m.id, { id: m.id, date: Date.now(), created: m.created, items: m.items, ...(m.name ? { name: m.name } : {}) });
+  S.del('amenu:' + m.id);
   S.set('skipped', []);
   askRatings(m.items.map(i => i.id), 'Comment était la semaine ?');
-  fillMenu();
+  // s'il reste d'autres menus en cours on y bascule, sinon on en prépare un nouveau
+  if (!menus().length) { draft = newMenu(); setCur(draft.id); fillMenu(); }
 }
 
 function askRatings(ids, title) {
@@ -161,6 +207,7 @@ function renderMenu() {
   const extras = R.suggest(3, { exclude: ex, types: ['dessert', 'entree'] });
   const nFav = favIds().length;
   view.innerHTML = `
+    ${menuSwitch(m)}
     <div class="searchrow"><button class="search fake" data-act="openSearch">${ic('search')}<span>Rechercher une recette…</span></button>
       <button class="favbtn" data-act="openFavs" aria-label="Recettes favorites${nFav ? ` (${nFav})` : ''}">${ic('heartFill')}</button></div>
     ${settingsBar(st)}
@@ -170,13 +217,24 @@ function renderMenu() {
     ${m.items.length ? items : `<div class="empty"><div class="ee">${ic('utensils')}</div><h2>Menu vide</h2><p class="muted">On vous propose ${st.meals} recettes selon vos goûts ?</p><button class="btn" data-act="fill">Générer mon menu</button></div>`}
     <div class="addmeal" data-act="go" data-tab="discover"><div class="plate ph">${ic('pot')}</div><span class="spacer" style="font-size:18px">Ajouter un autre repas</span><span class="round red">${ic('plus')}</span></div>
     ${m.items.length ? `<div class="center" style="margin-top:14px"><button class="pill" data-act="archive">${ic('check')} Semaine terminée : archiver et noter</button></div>` : ''}
+    ${getMenu(m.id) && menus().length > 1 ? `<div class="center" style="margin-top:10px"><button class="linkbtn small muted" data-act="delCur">${ic('trash', 'sm')} Supprimer ce menu</button></div>` : ''}
     ${extras.length ? `<div class="suggest"><h2>On vous suggère aussi…</h2>${extras.map(r => `
       <div class="meal"><button data-act="open" data-id="${r.id}">${plate(r)}</button><div class="info">
         <h3 data-act="open" data-id="${r.id}">${esc(name(r))}</h3>
         <div class="chips"><span class="chip" style="color:var(--ink)">${ic('starFill', 'sm gold')}${r.r.toFixed(1)}</span><span class="chip" style="color:var(--ink)">${ic('clock')} ${minutes(r.tm)}</span></div>
         <div><button class="pill" data-act="add" data-id="${r.id}">Ajouter</button></div></div></div>`).join('')}</div>` : ''}
     <div style="height:90px"></div>
-    ${m.items.length ? `<div class="sticky-cta"><button class="btn big" data-act="go" data-tab="shop">Créer ma liste de courses</button></div>` : ''}`;
+    ${m.items.length ? `<div class="sticky-cta"><button class="btn big" data-act="goShop" data-m="${m.id}">${activeMenus().length > 1 ? 'Voir sa liste de courses' : 'Créer ma liste de courses'}</button></div>` : ''}`;
+}
+
+// onglets des menus en cours : passer de l'un à l'autre, renommer, en créer un nouveau
+function menuSwitch(cur) {
+  const all = menus(), list = all.some(m => m.id === cur.id) ? all : [...all, cur];
+  if (list.length < 2 && !cur.items.length) return '';
+  return `<div class="fchips menus">${list.map(m => {
+    const on = m.id === cur.id;
+    return `<button class="fchip ${on ? 'on' : ''}" data-act="${on ? 'renameMenu' : 'pickMenu'}" data-m="${m.id}"${on ? ' aria-label="Renommer ce menu"' : ''}>${esc(menuName(m))}<span class="n">${m.items.length}</span>${on ? ic('pencil', 'sm') : ''}</button>`;
+  }).join('')}<button class="fchip add" data-act="newMenu">${ic('plus', 'sm')} Nouveau menu</button></div>`;
 }
 
 // ------------------------------------------------------------ vue Découvrir
@@ -185,7 +243,7 @@ function matchQuery(r, words) {
   return words.every(w => hay.includes(w));
 }
 function renderDiscover(keepScroll) {
-  setTitle(`<button class="back" data-act="go" data-tab="menu" aria-label="Retour au menu">${ic('back')}</button>Recettes`);
+  setTitle(`<button class="back" data-act="go" data-tab="menu" aria-label="Retour au menu">${ic('back')}</button>Recettes${menus().length > 1 ? ` <span class="sub">pour ${esc(menuName(menu()))}</span>` : ''}`);
   const st = R.settings();
   const words = norm(disc.q).split(/\s+/).filter(Boolean);
   const favs = favIds(), isFav = disc.scope === 'fav';
@@ -240,10 +298,63 @@ function renderDiscover(keepScroll) {
   }
 }
 
+// ------------------------------------------------------------ plusieurs listes / menus : vue d'ensemble
+// pick[t] : menus affichés dans l'onglet (null = vue d'ensemble) ; picked[t] : sélection en cours
+const pick = { shop: null, cook: null }, picked = { shop: new Set(), cook: new Set() };
+function shown(t) {
+  const act = activeMenus();
+  if (act.length <= 1) return act;  // une seule liste : affichée directement
+  const l = pick[t] ? act.filter(m => pick[t].includes(m.id)) : [];
+  return l.length ? l : null;
+}
+const sameIds = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+const miniPlate = r => r.img ? `<img src="${esc(r.img)}" loading="lazy" alt="" data-fb="${r.t}">` : `<span class="ph">${typeIcon(r.t)}</span>`;
+function lcard(m, st, t) {
+  const on = picked[t].has(m.id), rs = m.items.map(i => DB.byId.get(i.id)).filter(Boolean);
+  const pct = st.total ? Math.round(st.done / st.total * 100) : 0;
+  return `<div class="lcard ${on ? 'on' : ''} ${st.finished ? 'fin' : ''}">
+    <button class="lsel" data-act="lsel" data-t="${t}" data-m="${m.id}" aria-label="Sélectionner" aria-pressed="${on}"><span class="box">${on ? ic('check') : ''}</span></button>
+    <div class="lbody" data-act="lopen" data-t="${t}" data-m="${m.id}">
+      <div class="lhead"><h3>${esc(menuName(m))}</h3>${st.finished ? `<span class="lok">${ic('check', 'sm')} ${t === 'shop' ? 'Faites' : 'Bouclé'}</span>` : `<span class="lpct">${pct} %</span>`}</div>
+      <span class="muted small">${rs.length} recette${rs.length > 1 ? 's' : ''} · ${st.done}/${st.total} ${t === 'shop' ? 'articles' : 'repas cuisinés'}</span>
+      <div class="progress"><i style="width:${pct}%"></i></div>
+      <div class="thumbs">${rs.slice(0, 6).map(miniPlate).join('')}${rs.length > 6 ? `<span class="more">+${rs.length - 6}</span>` : ''}</div>
+    </div>
+    <button class="ledit" data-act="ledit" data-m="${m.id}" aria-label="Modifier les plats">${ic('pencil')}</button>
+  </div>`;
+}
+function selBar(t) {
+  const n = picked[t].size; if (!n) return '';
+  return `<div class="sticky-cta selbar"><button class="pill" data-act="lclear" data-t="${t}" aria-label="Tout désélectionner">${ic('x', 'sm')} ${n}</button>
+    <button class="btn" data-act="lview" data-t="${t}">${n > 1 ? `Voir les ${n} ensemble` : 'Ouvrir'}</button>
+    <button class="round" data-act="ldel" data-t="${t}" aria-label="Supprimer la sélection">${ic('trash')}</button></div>`;
+}
+function openLists(t, ids) {
+  pick[t] = ids; navPush({ tab: t, list: ids, lp: 1 }); window.scrollTo(0, 0); render();
+}
+function overview(t, act, stats, intro) {
+  // on oublie les menus sélectionnés qui ont disparu (archivés, supprimés ailleurs)
+  [...picked[t]].forEach(id => { if (!act.some(m => m.id === id)) picked[t].delete(id); });
+  const allOn = act.every(m => picked[t].has(m.id));
+  view.innerHTML = `
+    <div class="row" style="margin:0 2px 12px;align-items:flex-start"><p class="muted small spacer" style="margin:0">${intro}</p>
+      <button class="linkbtn small" data-act="lall" data-t="${t}">${allOn ? 'Aucune' : 'Tout cocher'}</button></div>
+    ${act.map((m, i) => lcard(m, stats[i], t)).join('')}
+    <div class="center" style="margin-top:6px"><button class="pill" data-act="newMenu">${ic('plus')} Nouveau menu</button></div>
+    <div style="height:90px"></div>
+    ${selBar(t)}`;
+}
+// barre de titre d'une liste ouverte : retour à la vue d'ensemble s'il y a plusieurs menus
+function listTitle(t, ms, single, actions = '') {
+  const multi = activeMenus().length > 1;
+  const back = multi ? `<button class="back" data-act="lback" data-t="${t}" aria-label="Toutes les listes">${ic('back')}</button>` : '';
+  setTitle(back + (ms.length > 1 ? `${ms.length} ${t === 'shop' ? 'listes' : 'menus'} <span class="sub">ensemble</span>` : multi ? esc(menuName(ms[0])) : single), actions);
+}
+
 // ------------------------------------------------------------ vue Courses
-async function shoppingList(m) {
+async function shoppingList(ms) {
   const agg = new Map();
-  for (const it of m.items) {
+  for (const m of ms) for (const it of m.items) {
     const r = DB.byId.get(it.id); if (!r) continue;
     const d = await details(it.id); if (!d) continue;
     const f = it.ppl / (d.serv || 4);
@@ -251,95 +362,141 @@ async function shoppingList(m) {
       const label = cap(e.fr || e.n);
       const fam = unitFamily(e.u);
       const key = norm(label).replace(/(\w)s\b/g, '$1') + '|' + fam;
-      if (!agg.has(key)) agg.set(key, { key, label, aisle: e.a || 'Autres', pantry: !!e.p, fam, q: 0, hasQ: false, units: new Set(), from: new Set(), en: e.n, k: e.k });
+      if (!agg.has(key)) agg.set(key, { key, label, aisle: e.a || 'Autres', pantry: !!e.p, fam, q: 0, hasQ: false, units: new Set(), from: new Set(), ms: new Set(), en: e.n, k: e.k });
       const a = agg.get(key);
       if (e.q != null) { a.q += toBase(e.q * f, e.u); a.hasQ = true; if (e.u) a.units.add(e.u); }
-      a.from.add(name(r));
+      a.from.add(name(r)); a.ms.add(m.id);
     }
   }
   return [...agg.values()].map(a => {
     let qty = '';
     if (a.hasQ) { const [q, u] = fromBase(a.q, a.fam, a.units); qty = fmtQty(q, u); }
-    return { ...a, qty };
+    return { ...a, ms: [...a.ms], qty };
   });
+}
+// un article fusionné de plusieurs listes est coché quand il l'est dans chacune
+const isChecked = i => i.ms.every(mid => S.get(`check:${mid}:${i.key}`, false));
+function shopStats(m, items) {
+  const main = items.filter(i => !i.pantry), extras = S.list(`extra:${m.id}:`);
+  return { done: main.filter(isChecked).length + extras.filter(([, e]) => e.done).length, total: main.length + extras.length, finished: S.get(`shopdone:${m.id}`, 0) };
 }
 const AISLE_ORDER = ['Fruits & légumes', 'Viandes & poissons', 'Crèmerie & œufs', 'Boulangerie', 'Épicerie salée', 'Épicerie sucrée', 'Épices & condiments', 'Surgelés', 'Boissons', 'Autres'];
 async function renderShop() {
-  const m = menu();
-  setTitle('Liste de courses', m.items.length ? `<button class="ib" data-act="shareList" aria-label="Partager">${ic('share')}</button>` : '');
-  if (!m.items.length) {
+  const act = activeMenus();
+  if (!act.length) {
+    setTitle('Liste de courses');
     view.innerHTML = `<div class="empty"><div class="ee">${ic('cart')}</div><h2>Pas encore de liste</h2><p class="muted">Choisissez des recettes : la liste se remplit toute seule.</p><button class="btn" data-act="go" data-tab="menu">Voir mon menu</button></div>`;
     return;
   }
-  if (!renderShop.cache || renderShop.cacheKey !== JSON.stringify(m.items)) view.innerHTML = '<div class="loader"></div>';
-  const items = await shoppingList(m);
-  renderShop.cache = items; renderShop.cacheKey = JSON.stringify(m.items);
-  if (tab !== 'shop') return;
-  const ck = k => S.get(`check:${m.id}:${k}`, false);
-  const extras = S.list(`extra:${m.id}:`);
+  const ms = shown('shop');
+  if (ms) return renderShopList(ms);
+  setTitle(`Listes de courses <span class="sub">${act.length} en cours</span>`);
+  const stats = await Promise.all(act.map(async m => shopStats(m, await shoppingList([m]))));
+  if (tab !== 'shop' || shown('shop')) return;
+  overview('shop', act, stats, 'Touchez une liste pour l\'ouvrir, ou cochez-en plusieurs pour faire toutes les courses en une fois.');
+}
+// plats d'une liste : on en retire ou on en ajoute, les ingrédients suivent
+function dishesBlock(ms) {
+  return `<div class="aisle dishes"><h3>Plats</h3>${ms.map(m => `
+    ${ms.length > 1 ? `<div class="dishmenu">${esc(menuName(m))}</div>` : ''}
+    <div class="dishrow">${m.items.map(it => { const r = DB.byId.get(it.id); return r ? `<span class="dish"><span class="dhit" data-act="open" data-id="${r.id}" data-ppl="${it.ppl}">${miniPlate(r)}<span class="dn">${esc(name(r))}</span></span><button data-act="dishDel" data-m="${m.id}" data-id="${r.id}" aria-label="Retirer ${esc(name(r))}">${ic('x', 'sm')}</button></span>` : ''; }).join('')}
+      <button class="dish add" data-act="dishAdd" data-m="${m.id}">${ic('plus', 'sm')} Ajouter un plat</button></div>`).join('')}</div>`;
+}
+async function renderShopList(ms) {
+  const ids = ms.map(m => m.id), mids = ids.join(',');
+  const nR = ms.reduce((s, m) => s + m.items.length, 0);
+  listTitle('shop', ms, 'Liste de courses', `<button class="ib" data-act="shareList" aria-label="Partager">${ic('share')}</button>`);
+  const cacheKey = JSON.stringify(ms.map(m => [m.id, m.items]));
+  if (!renderShop.cache || renderShop.cacheKey !== cacheKey) view.innerHTML = '<div class="loader"></div>';
+  const items = await shoppingList(ms);
+  renderShop.cache = items; renderShop.cacheKey = cacheKey; renderShop.ids = ids;
+  const now = shown('shop');
+  if (tab !== 'shop' || !now || !sameIds(now.map(m => m.id), ids)) return;
+  const extras = ms.flatMap(m => S.list(`extra:${m.id}:`).map(([id, e]) => ({ id, e, mid: m.id })));
   const main = items.filter(i => !i.pantry), pantry = items.filter(i => i.pantry);
-  const doneN = main.filter(i => ck(i.key)).length + extras.filter(([, e]) => e.done).length;
+  const doneN = main.filter(isChecked).length + extras.filter(x => x.e.done).length;
   const totalN = main.length + extras.length;
-  const row = i => `<div class="item ${ck(i.key) ? 'done' : ''}" data-act="check" data-k="${esc(i.key)}">
-      <span class="box">${ck(i.key) ? ic('check') : ''}</span><span class="thumb">${ingPic(i.k, i.en)}</span><div class="it">${esc(i.label)}<div class="from">${esc([...i.from].join(' · '))}</div></div><span class="qty">${esc(i.qty)}</span></div>`;
+  const row = i => { const c = isChecked(i); return `<div class="item ${c ? 'done' : ''}" data-act="check" data-k="${esc(i.key)}" data-m="${i.ms.join(',')}">
+      <span class="box">${c ? ic('check') : ''}</span><span class="thumb">${ingPic(i.k, i.en)}</span><div class="it">${esc(i.label)}<div class="from">${esc([...i.from].join(' · '))}</div></div><span class="qty">${esc(i.qty)}</span></div>`; };
   const groups = AISLE_ORDER.map(a => [a, main.filter(i => i.aisle === a)]).filter(([, l]) => l.length);
-  const done = S.get(`shopdone:${m.id}`, 0);
+  const dones = ms.map(m => S.get(`shopdone:${m.id}`, 0));
+  const done = dones.every(Boolean) ? Math.max(...dones) : 0;
   const allChecked = totalN > 0 && doneN === totalN;
   // le bouton n'est animé qu'au moment où il apparaît, pas à chaque rafraîchissement
   const ctaEnter = allChecked && !done && !renderShop.ctaShown;
   renderShop.ctaShown = allChecked && !done;
   view.innerHTML = `
     ${done ? `<div class="banner green"><span class="bi">${ic('checks')}</span><div class="spacer"><b class="plain">Courses faites</b><br><span class="small">Validées le ${fmtDate(done)}. Place à la cuisine !</span></div>
-      <button class="btn small" data-act="go" data-tab="cook">Cuisiner</button></div>
-      <div class="center" style="margin:-4px 0 14px"><button class="linkbtn small muted" data-act="shopReopen">${ic('undo')} Rouvrir la liste</button></div>` : ''}
-    <p class="muted" style="margin:0">${m.items.length} recette${m.items.length > 1 ? 's' : ''} · ${doneN}/${totalN} articles</p>
+      <button class="btn small" data-act="goCook" data-m="${mids}">Cuisiner</button></div>
+      <div class="center" style="margin:-4px 0 14px"><button class="linkbtn small muted" data-act="shopReopen" data-m="${mids}">${ic('undo')} Rouvrir la liste</button></div>` : ''}
+    <p class="muted" style="margin:0">${ms.length > 1 ? `${ms.length} listes · ` : ''}${nR} recette${nR > 1 ? 's' : ''} · ${doneN}/${totalN} articles</p>
     <div class="progress"><i style="width:${totalN ? Math.round(doneN / totalN * 100) : 0}%"></i></div>
+    ${dishesBlock(ms)}
     ${groups.map(([a, l]) => `<div class="aisle"><h3>${a}</h3>${l.sort((x, y) => x.label.localeCompare(y.label, 'fr')).map(row).join('')}</div>`).join('')}
     <div class="aisle"><h3>Autres articles</h3>
-      ${extras.map(([id, e]) => `<div class="item ${e.done ? 'done' : ''}"><span class="box" data-act="xcheck" data-id="${id}">${e.done ? ic('check') : ''}</span><div class="it" data-act="xcheck" data-id="${id}">${esc(e.txt)}</div><button class="del" data-act="xdel" data-id="${id}" aria-label="Supprimer">${ic('x')}</button></div>`).join('')}
+      ${extras.map(({ id, e, mid }) => `<div class="item ${e.done ? 'done' : ''}"><span class="box" data-act="xcheck" data-m="${mid}" data-id="${id}">${e.done ? ic('check') : ''}</span><div class="it" data-act="xcheck" data-m="${mid}" data-id="${id}">${esc(e.txt)}</div><button class="del" data-act="xdel" data-m="${mid}" data-id="${id}" aria-label="Supprimer">${ic('x')}</button></div>`).join('')}
       <form id="addx" class="item"><input class="field" id="xtxt" placeholder="Ajouter : lessive, pain, café…" style="padding:9px 12px"><button class="round red" style="width:40px;height:40px;font-size:22px" aria-label="Ajouter">${ic('plus')}</button></form></div>
     ${pantry.length ? `<details class="aisle"><summary><h3>${ic('shaker')} Placard : à vérifier (${pantry.length})</h3></summary>${pantry.map(row).join('')}</details>` : ''}
     <p class="muted small center">Les quantités tiennent compte du nombre de personnes de chaque recette.</p>
-    ${allChecked && !done ? `<div style="height:80px"></div><div class="sticky-cta ${ctaEnter ? 'enter' : ''}"><button class="btn big green" data-act="shopDone">${ic('checks')} Tout valider</button></div>` : ''}`;
+    ${allChecked && !done ? `<div style="height:80px"></div><div class="sticky-cta ${ctaEnter ? 'enter' : ''}"><button class="btn big green" data-act="shopDone" data-m="${mids}">${ic('checks')} Tout valider</button></div>` : ''}`;
   $('#addx').addEventListener('submit', e => {
     e.preventDefault(); const v = $('#xtxt').value.trim(); if (!v) return; haptic('medium');
-    S.set(`extra:${m.id}:${S.uid()}`, { txt: v, done: false });
+    S.set(`extra:${ids[0]}:${S.uid()}`, { txt: v, done: false });
   });
 }
 
 // ------------------------------------------------------------ vue Cuisiner (menus de la semaine)
 const isCooked = (m, id) => S.get(`cooked:${m.id}:${id}`, false);
+function cookStats(m) {
+  const rs = m.items.filter(i => DB.byId.has(i.id)), done = rs.filter(i => isCooked(m, i.id)).length;
+  return { done, total: rs.length, finished: rs.length > 0 && done === rs.length };
+}
 function renderCook() {
-  const m = menu();
-  const rs = m.items.map(it => ({ it, r: DB.byId.get(it.id) })).filter(x => x.r);
-  setTitle(`Cette semaine${rs.length ? ` <span class="sub">${rs.length} repas</span>` : ''}`);
-  if (!rs.length) {
+  const act = activeMenus();
+  if (!act.length) {
+    setTitle('Cette semaine');
     view.innerHTML = `<div class="empty"><div class="ee">${ic('chef')}</div><h2>Rien à cuisiner</h2><p class="muted">Choisissez d'abord le menu de la semaine : il apparaîtra ici, prêt à cuisiner.</p><button class="btn" data-act="go" data-tab="menu">Choisir le menu</button></div>`;
     return;
   }
-  const todo = rs.filter(x => !isCooked(m, x.r.id)), cooked = rs.filter(x => isCooked(m, x.r.id));
-  const shopDone = S.get(`shopdone:${m.id}`, 0);
-  const card = ({ it, r }, i) => {
+  const ms = shown('cook');
+  if (ms) return renderCookList(ms);
+  setTitle(`Menus de la semaine <span class="sub">${act.length} en cours</span>`);
+  overview('cook', act, act.map(cookStats), 'Touchez un menu pour l\'ouvrir, ou cochez-en plusieurs pour les voir ensemble.');
+}
+function renderCookList(ms) {
+  const all = ms.flatMap(m => m.items.map(it => ({ m, it, r: DB.byId.get(it.id) })).filter(x => x.r));
+  const many = ms.length > 1;
+  listTitle('cook', ms, `Cette semaine${all.length ? ` <span class="sub">${all.length} repas</span>` : ''}`);
+  const cookedN = all.filter(x => isCooked(x.m, x.r.id)).length;
+  const shopDone = ms.every(m => S.get(`shopdone:${m.id}`, 0));
+  const mids = ms.map(m => m.id).join(',');
+  const card = ({ m, it, r }, i) => {
     const c = isCooked(m, r.id), rt = S.get('rate:' + r.id, {});
     return `<div class="cookcard ${c ? 'done' : ''}">
-      <button class="cdel" data-act="cdel" data-id="${r.id}" aria-label="Supprimer du menu">${ic('trash')}</button>
+      <button class="cdel" data-act="cdel" data-m="${m.id}" data-id="${r.id}" aria-label="Supprimer du menu">${ic('trash')}</button>
       <button class="cplate" data-act="open" data-id="${r.id}" data-ppl="${it.ppl}">${plate(r)}${c ? `<span class="cdone">${ic('check')}</span>` : ''}</button>
       <div class="info">
         ${c ? '' : `<span class="cnum">Repas ${i + 1}</span>`}
         <h3 data-act="open" data-id="${r.id}" data-ppl="${it.ppl}">${esc(name(r))}</h3>
         <div class="cmeta"><span>${ic('clock')} ${minutes(r.tm)}</span><span>${ic('users')} ${it.ppl} pers.</span>${c && rt.thumb ? `<span>${ic(rt.thumb === 1 ? 'thumbUp' : 'thumbDown')}</span>` : ''}</div>
         <div class="acts">${c
-          ? `<button class="pill" data-act="cooked" data-id="${r.id}">${ic('undo')} Pas encore</button>`
-          : `<button class="pill" data-act="open" data-id="${r.id}" data-ppl="${it.ppl}">${ic('book')} Recette</button><button class="pill strong" data-act="cooked" data-id="${r.id}">${ic('check')} C'est mangé</button>`}</div>
+          ? `<button class="pill" data-act="cooked" data-m="${m.id}" data-id="${r.id}">${ic('undo')} Pas encore</button>`
+          : `<button class="pill" data-act="open" data-id="${r.id}" data-ppl="${it.ppl}">${ic('book')} Recette</button><button class="pill strong" data-act="cooked" data-m="${m.id}" data-id="${r.id}">${ic('check')} C'est mangé</button>`}</div>
       </div></div>`;
   };
+  const section = m => {
+    const rs = all.filter(x => x.m === m);
+    const todo = rs.filter(x => !isCooked(m, x.r.id)), cooked = rs.filter(x => isCooked(m, x.r.id));
+    return `${many ? `<div class="menuhead"><h2>${esc(menuName(m))}</h2><span class="muted small">${cooked.length}/${rs.length}</span><span class="spacer"></span><button class="round sm" data-act="ledit" data-m="${m.id}" aria-label="Modifier les plats">${ic('pencil')}</button></div>` : ''}
+      ${!todo.length && rs.length ? `<div class="banner green"><span class="bi">${ic('checks')}</span><div class="spacer"><b class="plain">${many ? 'Menu bouclé !' : 'Semaine bouclée !'}</b><br><span class="small">Archivez-${many ? 'le' : 'la'} pour ${many ? 'le' : 'la'} retrouver et préparer la suite.</span></div><button class="btn small" data-act="archive" data-m="${m.id}">Archiver</button></div>` : ''}
+      ${todo.length ? `${many ? '' : '<h2 class="section-title">À cuisiner</h2>'}${todo.map((x, i) => card(x, i)).join('')}` : ''}
+      ${cooked.length ? `<h2 class="section-title${many ? ' small' : ''}">Déjà mangé</h2>${cooked.map(x => card(x)).join('')}` : ''}`;
+  };
   view.innerHTML = `
-    <p class="muted" style="margin:0">${cooked.length}/${rs.length} repas cuisinés</p>
-    <div class="progress"><i style="width:${Math.round(cooked.length / rs.length * 100)}%"></i></div>
-    ${!shopDone && todo.length ? `<div class="banner soft"><span class="bi">${ic('cart')}</span><div class="spacer small">Les courses ne sont pas encore validées.</div><button class="btn small ghost" data-act="go" data-tab="shop">Courses</button></div>` : ''}
-    ${!todo.length ? `<div class="banner green"><span class="bi">${ic('checks')}</span><div class="spacer"><b class="plain">Semaine bouclée !</b><br><span class="small">Archivez-la pour la retrouver et préparer la suivante.</span></div><button class="btn small" data-act="archive">Archiver</button></div>` : ''}
-    ${todo.length ? `<h2 class="section-title">À cuisiner</h2>${todo.map((x, i) => card(x, i)).join('')}` : ''}
-    ${cooked.length ? `<h2 class="section-title">Déjà mangé</h2>${cooked.map(x => card(x)).join('')}` : ''}
+    <p class="muted" style="margin:0">${cookedN}/${all.length} repas cuisinés</p>
+    <div class="progress"><i style="width:${all.length ? Math.round(cookedN / all.length * 100) : 0}%"></i></div>
+    ${!shopDone && cookedN < all.length ? `<div class="banner soft"><span class="bi">${ic('cart')}</span><div class="spacer small">Les courses ne sont pas encore validées.</div><button class="btn small ghost" data-act="goShop" data-m="${mids}">Courses</button></div>` : ''}
+    ${ms.map(section).join('')}
     <div style="height:20px"></div>`;
 }
 
@@ -364,7 +521,7 @@ function renderHistory() {
     const rs = h.items.map(i => DB.byId.get(i.id)).filter(Boolean);
     const open = histOpen.has(h.id);
     return `<div class="hist">
-      <div class="row" data-act="hopen" data-id="${h.id}"><div class="spacer"><h3>Semaine du ${fmtDate(h.created || h.date)}</h3><span class="muted small">${rs.length} recettes</span></div><span class="chev">${ic(open ? 'up' : 'down')}</span></div>
+      <div class="row" data-act="hopen" data-id="${h.id}"><div class="spacer"><h3>${h.name ? esc(h.name) : `Semaine du ${fmtDate(h.created || h.date)}`}</h3><span class="muted small">${rs.length} recettes</span></div><span class="chev">${ic(open ? 'up' : 'down')}</span></div>
       <div class="thumbs" data-act="hopen" data-id="${h.id}">${rs.slice(0, 7).map(r => r.img ? `<img src="${esc(r.img)}" loading="lazy" alt="" data-fb="${r.t}">` : `<div class="ph">${typeIcon(r.t)}</div>`).join('')}</div>
       ${open ? `<div class="list">${rs.map(r => {
         const rt = S.get('rate:' + r.id, {});
@@ -476,6 +633,11 @@ window.addEventListener('popstate', e => {
   if (pendingTab) { const t = pendingTab; pendingTab = null; switchTab(t); return; }
   if (st.tab && st.tab !== tab) switchTab(st.tab, { fromPop: true, noAnim: uaAnim });
   if (st.sheet && sheet.hidden) openRecipe(st.sheet, 0, true);
+  // retour depuis une liste ouverte : on revient à la vue d'ensemble des listes / menus
+  if (st.tab === tab && (tab === 'shop' || tab === 'cook') && !st.sheet && !st.modal) {
+    const want = st.list || null;
+    if (JSON.stringify(want) !== JSON.stringify(pick[tab])) { pick[tab] = want; window.scrollTo(0, 0); render(); }
+  }
 });
 
 // texte des étapes : grandes parties, ingrédients illustrés, durées → minuteur, températures
@@ -559,7 +721,7 @@ const A = {
   ppl: el => { const m = menu(); const it = m.items.find(i => i.id === +el.dataset.id); if (!it) return; it.ppl = Math.max(1, Math.min(20, it.ppl + +el.dataset.d)); saveMenu(m); },
   meals: el => { const n = Math.max(0, Math.min(14, menu().items.length + +el.dataset.d)); fillMenu(n); },
   fill: () => fillMenu(),
-  archive: () => { if (confirm('Archiver ce menu dans les archives et en commencer un nouveau ?')) archiveWeek(); },
+  archive: el => { if (confirm(menus().length > 1 ? 'Archiver ce menu ? Il rejoindra les archives.' : 'Archiver ce menu dans les archives et en commencer un nouveau ?')) archiveWeek(el.dataset.m); },
   sadd: el => addToMenu(+el.dataset.id, sheetState?.ppl),
   sremove: el => removeFromMenu(+el.dataset.id),
   sppl: el => { sheetState.ppl = Math.max(1, Math.min(20, sheetState.ppl + +el.dataset.d)); const m = menu(); const it = m.items.find(i => i.id === sheetState.id); if (it) { it.ppl = sheetState.ppl; saveMenu(m); } else renderSheet(); },
@@ -596,24 +758,25 @@ const A = {
   },
   setCuisine: el => { disc.cuisine = el.dataset.v; disc.shown = 30; closeModalEl(el.closest('.modal-bg')); renderDiscover(); },
   more: () => { disc.shown += 30; renderDiscover(true); },
-  shopDone: () => { S.set(`shopdone:${menu().id}`, Date.now()); toast('Courses validées, bon appétit !'); switchTab('cook'); },
-  shopReopen: () => S.del(`shopdone:${menu().id}`),
+  shopDone: el => { const ids = el.dataset.m.split(','); ids.forEach(mid => S.set(`shopdone:${mid}`, Date.now())); toast('Courses validées, bon appétit !'); pick.cook = ids; switchTab('cook'); },
+  shopReopen: el => el.dataset.m.split(',').forEach(mid => S.del(`shopdone:${mid}`)),
   cooked: el => {
-    const m = menu(), id = +el.dataset.id, k = `cooked:${m.id}:${id}`, was = S.get(k, false);
+    const m = getMenu(el.dataset.m) || menu(), id = +el.dataset.id, k = `cooked:${m.id}:${id}`, was = S.get(k, false);
     was ? S.del(k) : S.set(k, true);
     if (!was && !S.get('rate:' + id, {}).thumb) askRatings([id], 'Alors, c\'était bon ?');
   },
   cdel: el => {
-    const m = menu(), id = +el.dataset.id, idx = m.items.findIndex(i => i.id === id);
+    const m = getMenu(el.dataset.m) || menu(), id = +el.dataset.id, idx = m.items.findIndex(i => i.id === id);
     if (idx < 0) return;
     const key = S.uid();
     S.set('del:' + key, { id, ppl: m.items[idx].ppl, idx, menu: m.id, at: Date.now() });
-    removeFromMenu(id);
+    m.items = m.items.filter(i => i.id !== id); saveMenu(m);
     toast('Recette supprimée', { label: 'Annuler', act: 'restoreDel', id: key });
   },
   restoreDel: el => {
     const k = 'del:' + el.dataset.id, d = S.get(k); if (!d) return;
-    const m = menu();
+    // dans son menu d'origine s'il est encore en cours, sinon dans le menu courant
+    const m = getMenu(d.menu) || menu();
     if (!m.items.some(i => i.id === d.id)) {
       // même semaine : on la remet à sa place, sinon à la fin du menu actuel
       const at = d.menu === m.id ? Math.min(d.idx ?? m.items.length, m.items.length) : m.items.length;
@@ -624,25 +787,66 @@ const A = {
   },
   purgeDel: el => { if (confirm('Effacer définitivement cette recette de la liste ?')) S.del('del:' + el.dataset.id); },
   toggleDeleted: () => { showDeleted = !showDeleted; renderHistory(); },
-  check: el => { const k = `check:${menu().id}:${el.dataset.k}`; S.set(k, !S.get(k, false)); },
-  xcheck: el => { const k = `extra:${menu().id}:${el.dataset.id}`; const e = S.get(k); if (e) S.set(k, { ...e, done: !e.done }); },
-  xdel: el => S.del(`extra:${menu().id}:${el.dataset.id}`),
+  check: el => {
+    const key = el.dataset.k, mids = el.dataset.m.split(',');
+    const v = !mids.every(mid => S.get(`check:${mid}:${key}`, false));
+    mids.forEach(mid => S.set(`check:${mid}:${key}`, v));
+  },
+  xcheck: el => { const k = `extra:${el.dataset.m}:${el.dataset.id}`; const e = S.get(k); if (e) S.set(k, { ...e, done: !e.done }); },
+  xdel: el => S.del(`extra:${el.dataset.m}:${el.dataset.id}`),
   shareList: async () => {
-    const items = renderShop.cache || []; const m = menu();
-    const txt = 'Courses La Chavitera\n\n' + AISLE_ORDER.map(a => { const l = items.filter(i => i.aisle === a && !i.pantry && !S.get(`check:${m.id}:${i.key}`)); return l.length ? a + '\n' + l.map(i => `- ${i.label}${i.qty ? ' : ' + i.qty : ''}`).join('\n') : ''; }).filter(Boolean).join('\n\n')
-      + S.list(`extra:${m.id}:`).filter(([, e]) => !e.done).map(([, e]) => '\n- ' + e.txt).join('');
+    const items = renderShop.cache || [], ids = renderShop.ids || [];
+    const txt = 'Courses La Chavitera\n\n' + AISLE_ORDER.map(a => { const l = items.filter(i => i.aisle === a && !i.pantry && !isChecked(i)); return l.length ? a + '\n' + l.map(i => `- ${i.label}${i.qty ? ' : ' + i.qty : ''}`).join('\n') : ''; }).filter(Boolean).join('\n\n')
+      + ids.flatMap(mid => S.list(`extra:${mid}:`)).filter(([, e]) => !e.done).map(([, e]) => '\n- ' + e.txt).join('');
     share(txt);
   },
   shareMenu: () => share('Menu de la semaine\n\n' + menu().items.map(i => DB.byId.get(i.id)).filter(Boolean).map(r => '- ' + name(r) + ' (' + foodUrl(r) + ')').join('\n')),
   hopen: el => { const id = el.dataset.id; histOpen.has(id) ? histOpen.delete(id) : histOpen.add(id); renderHistory(); },
   redo: el => {
     const h = S.get('hist:' + el.dataset.id); if (!h) return;
-    const m = menu();
-    if (m.items.length && !confirm('Remplacer le menu actuel par celui-ci ?')) return;
-    saveMenu({ id: S.uid(), created: Date.now(), items: h.items.map(i => ({ ...i })) }); toast('Menu rechargé'); switchTab('menu');
+    // ajouté comme nouveau menu en cours : les autres menus ne sont pas touchés
+    const m = { id: S.uid(), created: Date.now(), items: h.items.map(i => ({ ...i })) };
+    saveMenu(m); setCur(m.id); toast('Menu ajouté à vos menus en cours'); switchTab('menu');
   },
   hrate: el => { const h = S.get('hist:' + el.dataset.id); if (h) askRatings(h.items.map(i => i.id), 'Noter cette semaine'); },
   hdel: el => { if (confirm('Supprimer ce menu des archives ?')) S.del('hist:' + el.dataset.id); },
+  // ---- plusieurs menus / listes
+  pickMenu: el => { setCur(el.dataset.m); render(); },
+  newMenu: () => { startNewMenu(); tab === 'menu' ? render() : switchTab('menu'); },
+  renameMenu: el => {
+    const m = getMenu(el.dataset.m) || menu();
+    const v = prompt('Nom du menu', menuName(m)); if (v == null) return;
+    m.name = v.trim().slice(0, 40) || undefined; saveMenu(m);
+  },
+  delCur: () => deleteMenus([menu().id]),
+  undoMenus: () => { undoMenus.forEach(m => S.set('amenu:' + m.id, m)); undoMenus = []; $('#toast').hidden = true; },
+  goShop: el => { pick.shop = el.dataset.m.split(','); switchTab('shop'); },
+  goCook: el => { pick.cook = el.dataset.m.split(','); switchTab('cook'); },
+  lsel: el => { const s = picked[el.dataset.t], id = el.dataset.m; s.has(id) ? s.delete(id) : s.add(id); render(); },
+  lall: el => { const s = picked[el.dataset.t], act = activeMenus(); if (act.every(m => s.has(m.id))) s.clear(); else act.forEach(m => s.add(m.id)); render(); },
+  lclear: el => { picked[el.dataset.t].clear(); render(); },
+  lopen: el => openLists(el.dataset.t, [el.dataset.m]),
+  lview: el => { const t = el.dataset.t, ids = [...picked[t]]; picked[t].clear(); openLists(t, ids); },
+  lback: el => {
+    const t = el.dataset.t, st = navState();
+    if (st.lp) return history.back(); // ouverte depuis la vue d'ensemble : le popstate y ramène
+    pick[t] = null; navReplace({ ...st, list: null }); window.scrollTo(0, 0); render();
+  },
+  ldel: el => { const t = el.dataset.t, ids = [...picked[t]]; picked[t].clear(); deleteMenus(ids); },
+  ledit: el => { setCur(el.dataset.m); switchTab('menu'); },
+  dishAdd: el => { setCur(el.dataset.m); switchTab('discover'); },
+  dishDel: el => {
+    const m = getMenu(el.dataset.m), id = +el.dataset.id; if (!m) return;
+    const idx = m.items.findIndex(i => i.id === id); if (idx < 0) return;
+    dishUndo = { mid: m.id, idx, it: m.items[idx] };
+    m.items = m.items.filter(i => i.id !== id); saveMenu(m);
+    toast('Plat retiré de la liste', { label: 'Annuler', act: 'dishUndo', id: '' });
+  },
+  dishUndo: () => {
+    const u = dishUndo, m = u && getMenu(u.mid); dishUndo = null; $('#toast').hidden = true;
+    if (!m || m.items.some(i => i.id === u.it.id)) return;
+    m.items.splice(Math.min(u.idx, m.items.length), 0, u.it); saveMenu(m);
+  },
   setPeople: el => saveSettings({ people: Math.max(1, Math.min(20, R.settings().people + +el.dataset.d)) }),
   setMeals: el => saveSettings({ meals: Math.max(1, Math.min(14, R.settings().meals + +el.dataset.d)) }),
   mtype: el => { const st = R.settings(), v = el.dataset.v; let t = st.menuTypes.includes(v) ? st.menuTypes.filter(x => x !== v) : [...st.menuTypes, v]; if (!t.length) t = ['plat']; saveSettings({ menuTypes: t }); },
@@ -678,9 +882,11 @@ function switchTab(t, opts = {}) {
     if (cur.sheet || cur.modal) { pendingTab = t; history.back(); return; }
     if (t === from) { window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' }); return; }
     if (t === 'menu' && cur.d > 0) { history.go(-cur.d); return; } // retour à la racine : le popstate affiche Choisir
-    if (t === 'discover') navPush({ tab: t });
-    else if (cur.d === 0) navPush({ tab: t });
-    else navReplace({ tab: t, d: cur.d });
+    // Courses / Cuisiner : on retient la ou les listes ouvertes pour que le retour y ramène
+    const st = (t === 'shop' || t === 'cook') && pick[t] ? { tab: t, list: pick[t] } : { tab: t };
+    if (t === 'discover') navPush(st);
+    else if (cur.d === 0) navPush(st);
+    else navReplace({ ...st, d: cur.d });
   }
   if (t === from) return;
   const update = () => {
@@ -706,14 +912,17 @@ document.querySelectorAll('[data-ic]').forEach(el => { el.innerHTML = ic(el.data
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { haptic('light'); switchTab(b.dataset.tab); } });
 function render() {
   if (!DB.ready) return;
-  const m = menu(), n = m.items.length, shopDone = S.get(`shopdone:${m.id}`, 0);
-  const b = $('#shopBadge'); b.hidden = !n || !!shopDone; b.textContent = n;
-  const left = m.items.filter(i => !isCooked(m, i.id)).length, cb = $('#cookBadge');
-  cb.hidden = !shopDone || !left; cb.textContent = left;
+  const act = activeMenus();
+  // Courses : recettes des listes pas encore validées ; Cuisiner : repas restants des menus dont les courses sont faites
+  const n = act.filter(m => !S.get(`shopdone:${m.id}`, 0)).reduce((s, m) => s + m.items.length, 0);
+  const b = $('#shopBadge'); b.hidden = !n; b.textContent = n;
+  const left = act.filter(m => S.get(`shopdone:${m.id}`, 0)).reduce((s, m) => s + m.items.filter(i => !isCooked(m, i.id)).length, 0), cb = $('#cookBadge');
+  cb.hidden = !left; cb.textContent = left;
   return ({ menu: renderMenu, discover: renderDiscover, shop: renderShop, cook: renderCook, history: renderHistory, profile: renderProfile })[tab]();
 }
 let rt = null;
 S.on(keys => {
+  if (keys.includes('menu')) migrateMenu();
   if (tab !== 'discover' && (keys.includes('settings') || keys.includes('*'))) disc.shown = 30;
   clearTimeout(rt);
   rt = setTimeout(() => {
@@ -734,6 +943,7 @@ async function boot() {
     view.innerHTML = `<div class="empty"><div class="ee">${ic('chef')}</div><h2>La base de recettes arrive</h2><p class="muted">Les données ne sont pas encore générées. Lancez le workflow « Construire les recettes » sur GitHub (voir le README).</p></div>`;
     return;
   }
+  migrateMenu();
   loadLex();
   try { const r = await fetch('data/ing_img.json?v=' + DB.meta.v); if (r.ok) ingImg = await r.json(); } catch {}
   navReplace({ guard: 1, d: -1 });
