@@ -102,7 +102,7 @@ HEADS = {"spice", "spices", "pudding", "sauce", "butter", "mix", "juice", "extra
          "cookies", "filling", "frosting", "liqueur", "wine", "milk", "cream", "yogurt", "flakes", "salt", "sugar"}
 # un seul mot générique en fin de nom ne suffit pas (almond butter != butter, tuna in water != water)
 WEAK_SUFFIX = {"water", "butter", "milk", "oil", "juice", "sauce", "powder", "cream", "mix", "spice", "leaves",
-               "seeds", "sugar", "salt", "extract", "paste"}
+               "seeds", "sugar", "salt", "extract", "paste", "pepper", "peppers"}
 
 
 def candidates(key):
