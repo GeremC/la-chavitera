@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pandas pyarrow "kaggle>=1.8"
+      - run: pip install pandas pyarrow six "kaggle>=1.8"
       - name: Télécharger Food.com depuis Kaggle
         env:
           T: ${{ secrets.KAGGLE_API_TOKEN }}
