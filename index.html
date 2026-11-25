@@ -4,7 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>La Chavitera</title>
-  <meta name="theme-color" content="#FDF3E8">
+  <meta name="theme-color" content="#FDF3E8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#171311" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
   <meta name="description" content="Choisissez vos recettes, la liste de courses se fait toute seule.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
@@ -23,11 +25,11 @@
     <header class="topbar" id="topbar"><h1 id="title">Mon menu</h1><div id="topActions"></div></header>
     <main id="view"></main>
     <nav class="tabs" id="tabs">
-      <button data-tab="menu" class="on"><span class="ti">🍽️</span>Menu</button>
-      <button data-tab="discover"><span class="ti">🔎</span>Découvrir</button>
-      <button data-tab="shop"><span class="ti">🛒</span>Courses<b class="badge" id="shopBadge" hidden></b></button>
-      <button data-tab="history"><span class="ti">📖</span>Historique</button>
-      <button data-tab="profile"><span class="ti">👤</span>Profil</button>
+      <button data-tab="menu" class="on"><span class="ti" data-ic="utensils"></span>Menu</button>
+      <button data-tab="discover"><span class="ti" data-ic="search"></span>Découvrir</button>
+      <button data-tab="shop"><span class="ti" data-ic="cart"></span>Courses<b class="badge" id="shopBadge" hidden></b></button>
+      <button data-tab="history"><span class="ti" data-ic="book"></span>Historique</button>
+      <button data-tab="profile"><span class="ti" data-ic="user"></span>Profil</button>
     </nav>
   </div>
   <div id="sheet" class="sheet" hidden></div>
