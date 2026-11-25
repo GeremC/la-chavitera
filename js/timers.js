@@ -30,9 +30,9 @@ export function fmtClock(ms) {
 }
 
 // ------------------------------------------------------------ actions
-export function start({ sec, label, sub = '', rid = null }) {
+export function start({ sec, label, sub = '', rid = null, key = null, n = null }) {
   unlockAudio(); askNotif();
-  const t = { id: Math.random().toString(36).slice(2, 9), label, sub, rid, dur: sec * 1000, end: Date.now() + sec * 1000, paused: null, done: false };
+  const t = { id: Math.random().toString(36).slice(2, 9), label, sub, rid, key, n, dur: sec * 1000, end: Date.now() + sec * 1000, paused: null, done: false };
   timers.push(t); save(); render(); schedule();
   return t;
 }
@@ -124,13 +124,30 @@ async function wakeLock() {
   } catch { wake = null; }
 }
 
-// ------------------------------------------------------------ interface : dock flottant + panneau
-function pill(t) {
-  const ms = left(t), pct = t.done ? 1 : ms / Math.max(1, t.dur); // part restante
-  const C = 2 * Math.PI * 9;
-  return `<button class="tpill ${t.done ? 'done' : t.paused != null ? 'paused' : ''}" data-tact="panel" data-id="${t.id}" aria-label="Minuteur ${esc(t.label)}">
-    <svg class="ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle class="fg" cx="12" cy="12" r="9" stroke-dasharray="${C}" stroke-dashoffset="${(C * (1 - pct)).toFixed(1)}"/></svg>
-    <span class="tt" data-clock="${t.id}">${t.done ? 'Terminé !' : fmtClock(ms)}</span><span class="tl">${esc(t.label)}</span></button>`;
+// ------------------------------------------------------------ interface
+// Sur la fiche recette : le minuteur s'affiche en direct dans le texte de l'étape. S'il sort de l'écran,
+// un rond (numéro d'étape + temps restant) apparaît en haut ou en bas avec une flèche ; le toucher y ramène.
+// Ailleurs : les ronds sont en bas de l'écran ; les toucher ouvre le panneau des minuteurs.
+const C = 2 * Math.PI * 9;
+let ctxRid = null, dockTop = null, lastSig = '';
+export const byKey = key => key ? timers.find(t => t.key === key) : null;
+export function setRecipe(rid) { ctxRid = rid ?? null; lastSig = ''; render(); }
+export function refresh() { lastSig = ''; render(); }
+export function openPanel() { panelOpen = true; silence(); render(); }
+
+const frac = t => t.done ? 0 : left(t) / Math.max(1, t.dur);
+function shortClock(ms) {
+  const s = Math.ceil(ms / 1000);
+  return s >= 3600 ? Math.floor(s / 3600) + 'h' + String(Math.floor((s % 3600) / 60)).padStart(2, '0') : fmtClock(ms);
+}
+const ringSvg = (t, cls) => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle class="fg" data-ring="${t.id}" cx="12" cy="12" r="9" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - frac(t))).toFixed(1)}"/></svg>`;
+const stateCls = t => t.done ? 'done' : t.paused != null ? 'paused' : '';
+
+function round(t, dir) {
+  const arrow = dir ? `<span class="rarr">${ic(dir)}</span>` : '';
+  return `<button class="tround ${stateCls(t)} ${dir}" data-tact="${dir ? 'goto' : 'panel'}" data-id="${t.id}" aria-label="Minuteur ${esc(t.label)}${dir ? (dir === 'up' ? ', plus haut' : ', plus bas') : ''}">
+    ${dir === 'up' ? arrow : ''}<span class="rbody">${ringSvg(t, 'rring')}${t.n ? `<span class="rn">${t.n}</span>` : ''}
+    <span class="rt" data-clock="${t.id}" data-short="1">${t.done ? 'Fini' : shortClock(left(t))}</span></span>${dir === 'down' ? arrow : ''}</button>`;
 }
 function row(t) {
   const ms = left(t);
@@ -144,12 +161,44 @@ function row(t) {
         <button class="tb del" data-tact="remove" data-id="${t.id}" aria-label="Supprimer">${ic('x')}</button>`}
     </div></div>`;
 }
+
+// boutons de durée dans le texte : deviennent le minuteur en direct quand il tourne
+function decorate() {
+  document.querySelectorAll('.tmchip[data-key]').forEach(el => {
+    const t = byKey(el.dataset.key);
+    if (el.dataset.html == null) el.dataset.html = el.innerHTML;
+    const st = t ? t.id + ':' + (stateCls(t) || 'on') : '';
+    if (el.dataset.st === st) return;
+    el.dataset.st = st;
+    el.classList.toggle('live', !!t); el.classList.toggle('done', !!t?.done); el.classList.toggle('paused', t?.paused != null);
+    el.innerHTML = t ? `${ringSvg(t, 'cring')}<span class="cclock" data-clock="${t.id}">${t.done ? 'Terminé !' : fmtClock(left(t))}</span>${t.paused != null ? ic('pause', 'sm') : ''}` : el.dataset.html;
+  });
+}
+// où est le minuteur dans la fiche ouverte : visible, plus haut ou plus bas
+function placement() {
+  const res = {};
+  const sheet = document.getElementById('sheet');
+  if (ctxRid == null || !sheet || sheet.hidden) return res;
+  const h = window.innerHeight;
+  document.querySelectorAll('.tmchip.live[data-key]').forEach(el => {
+    const t = byKey(el.dataset.key); if (!t || res[t.id] === 'in') return;
+    const r = el.getBoundingClientRect();
+    res[t.id] = r.bottom < 70 ? 'up' : r.top > h - 100 ? 'down' : 'in';
+  });
+  return res;
+}
 function render() {
   if (!dock) return;
+  decorate();
+  const pl = placement();
   const order = [...timers].sort((a, b) => (b.done - a.done) || (left(a) - left(b)));
-  dock.hidden = !timers.length;
-  dock.classList.toggle('ringing', timers.some(t => t.done));
-  dock.innerHTML = timers.length ? `<div class="tpills">${order.map(pill).join('')}</div>` : '';
+  const top = order.filter(t => pl[t.id] === 'up'), bottom = order.filter(t => pl[t.id] !== 'up' && pl[t.id] !== 'in');
+  const sig = top.map(t => t.id + stateCls(t)).join() + '|' + bottom.map(t => t.id + stateCls(t) + (pl[t.id] || '')).join();
+  if (sig !== lastSig) {
+    lastSig = sig;
+    dockTop.hidden = !top.length; dockTop.innerHTML = top.map(t => round(t, 'up')).join('');
+    dock.hidden = !bottom.length; dock.innerHTML = bottom.map(t => round(t, pl[t.id] === 'down' ? 'down' : '')).join('');
+  }
   const p = document.getElementById('tpanel');
   if (panelOpen && timers.length) {
     const html = `<div class="modal tmodal"><div class="thead"><h2>Minuteurs</h2><button class="ib" data-tact="close" aria-label="Fermer">${ic('x')}</button></div>
@@ -163,13 +212,19 @@ function render() {
 function paint() {
   document.querySelectorAll('[data-clock]').forEach(el => {
     const t = timers.find(x => x.id === el.dataset.clock); if (!t || t.done) return;
-    el.textContent = fmtClock(left(t));
+    el.textContent = el.dataset.short ? shortClock(left(t)) : fmtClock(left(t));
   });
-  const C = 2 * Math.PI * 9;
-  dock?.querySelectorAll('.tpill').forEach(b => {
-    const t = timers.find(x => x.id === b.dataset.id); if (!t || t.done) return;
-    b.querySelector('.fg')?.setAttribute('stroke-dashoffset', (C * (1 - left(t) / Math.max(1, t.dur))).toFixed(1));
+  document.querySelectorAll('[data-ring]').forEach(el => {
+    const t = timers.find(x => x.id === el.dataset.ring); if (!t || t.done) return;
+    el.setAttribute('stroke-dashoffset', (C * (1 - frac(t))).toFixed(1));
   });
+}
+function gotoChip(id) {
+  const t = timers.find(x => x.id === id);
+  const el = t && [...document.querySelectorAll('.tmchip[data-key]')].find(c => c.dataset.key === t.key);
+  if (!el) return openPanel();
+  el.scrollIntoView({ block: 'center', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
 }
 function platformNote() {
   const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -179,10 +234,11 @@ function platformNote() {
   return 'Les minuteurs restent sur cet appareil, même si vous fermez l\'appli. Une notification prévient quand l\'appli est en arrière-plan (si le système la laisse tourner).';
 }
 
-let openRecipe = null;
+let openRecipe = null, scrollRaf = 0;
 export function mount(opts = {}) {
   openRecipe = opts.openRecipe;
   dock = document.getElementById('timers');
+  dockTop = document.getElementById('timersTop');
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-tact]');
     if (!el) { if (e.target.id === 'tpanel') { panelOpen = false; render(); } return; }
@@ -190,7 +246,8 @@ export function mount(opts = {}) {
     const id = el.dataset.id, a = el.dataset.tact;
     haptic(a === 'remove' ? 'medium' : 'light');
     unlockAudio();
-    if (a === 'panel') { panelOpen = true; silence(); render(); }
+    if (a === 'panel') openPanel();
+    else if (a === 'goto') { silence(); gotoChip(id); }
     else if (a === 'close') { panelOpen = false; render(); }
     else if (a === 'add') add(id, +el.dataset.s);
     else if (a === 'pause') pause(id);
@@ -199,15 +256,18 @@ export function mount(opts = {}) {
     else if (a === 'remove') remove(id);
     else if (a === 'open' && el.dataset.rid) { panelOpen = false; render(); openRecipe?.(+el.dataset.rid); }
   }, true);
+  // la fiche défile : les ronds « plus haut / plus bas » suivent
+  document.addEventListener('scroll', () => { if (!scrollRaf) scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; render(); }); }, { capture: true, passive: true });
+  window.addEventListener('resize', () => render());
   // le son ne peut démarrer qu'après un geste : on prépare l'audio au premier toucher
   document.addEventListener('pointerdown', unlockAudio, { once: true, capture: true });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') { timers = load(); check(); render(); }
+    if (document.visibilityState === 'visible') { timers = load(); check(); lastSig = ''; render(); }
     schedule();
   });
   // autre onglet / fenêtre de la même appli
-  window.addEventListener('storage', e => { if (e.key === KEY) { timers = load(); render(); schedule(); } });
+  window.addEventListener('storage', e => { if (e.key === KEY) { timers = load(); lastSig = ''; render(); schedule(); } });
   // clic sur la notification : le service worker remet l'appli au premier plan
-  navigator.serviceWorker?.addEventListener('message', e => { if (e.data?.type === 'timer-open') { panelOpen = true; render(); } });
+  navigator.serviceWorker?.addEventListener('message', e => { if (e.data?.type === 'timer-open') openPanel(); });
   check(); render(); schedule();
 }
