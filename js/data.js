@@ -32,9 +32,9 @@ export const DIFF = ['', 'Très facile', 'Facile', 'Niveau moyen', 'Difficile'];
 export const COST = ['', 'Bon marché', 'Coût moyen', 'Assez cher'];
 export const TYPES = { plat: 'Plat', entree: 'Entrée / soupe', dessert: 'Dessert', 'petit-dej': 'Petit-déj', boulangerie: 'Boulangerie', sauce: 'Sauce / tartinade', boisson: 'Boisson' };
 export const EQUIP = [
-  ['four', '🔥', 'Four'], ['micro-ondes', '📡', 'Micro-ondes'], ['mixeur', '🌀', 'Mixeur / robot'],
-  ['batteur', '🥣', 'Batteur'], ['mijoteuse', '🍲', 'Mijoteuse'], ['autocuiseur', '♨️', 'Autocuiseur / Cookeo'],
-  ['barbecue', '🍖', 'Barbecue'], ['friteuse', '🍟', 'Friteuse'], ['air-fryer', '💨', 'Air Fryer'],
+  ['four', 'oven', 'Four'], ['micro-ondes', 'microwave', 'Micro-ondes'], ['mixeur', 'blender', 'Mixeur / robot'],
+  ['batteur', 'whisk', 'Batteur'], ['mijoteuse', 'pot', 'Mijoteuse'], ['autocuiseur', 'pressure', 'Autocuiseur / Cookeo'],
+  ['barbecue', 'grill', 'Barbecue'], ['friteuse', 'fries', 'Friteuse'], ['air-fryer', 'wind', 'Air Fryer'],
 ];
 const KW = {
   'Easy': 'Facile', '< 15 Mins': 'Moins de 15 min', '< 30 Mins': 'Moins de 30 min', '< 60 Mins': 'Moins d\'1 h',
@@ -58,25 +58,6 @@ export function minutes(m) {
   const h = Math.floor(m / 60), mm = m % 60;
   return h + ' h' + (mm ? ' ' + String(mm).padStart(2, '0') : '');
 }
-
-// ------------------------------------------------------------ emoji
-const EMO = [
-  [/egg/, '🥚'], [/butter|margarine/, '🧈'], [/milk|cream|yogurt|half-and-half/, '🥛'], [/cheese|parmesan|mozzarella|feta|cheddar|gruyere|ricotta/, '🧀'],
-  [/chicken|turkey|duck/, '🍗'], [/beef|steak|veal|lamb|pork|sausage|ham|meat|chorizo/, '🥩'], [/bacon|pancetta|prosciutto/, '🥓'],
-  [/shrimp|prawn|lobster|crab/, '🦐'], [/salmon|tuna|cod|fish|tilapia|anchov|halibut/, '🐟'], [/scallop|mussel|clam|oyster/, '🦪'],
-  [/garlic/, '🧄'], [/onion|shallot|leek|scallion/, '🧅'], [/carrot/, '🥕'], [/potato/, '🥔'], [/tomato/, '🍅'], [/mushroom/, '🍄'],
-  [/pepper flakes|cayenne|chili|jalapeno|chile|serrano|sriracha|hot sauce/, '🌶️'], [/bell pepper/, '🫑'], [/broccoli/, '🥦'],
-  [/cucumber|zucchini/, '🥒'], [/eggplant/, '🍆'], [/corn/, '🌽'], [/avocado/, '🥑'], [/lettuce|spinach|kale|cabbage|basil|parsley|cilantro|herb|mint|dill|thyme|rosemary|sage|oregano/, '🌿'],
-  [/lemon|lime/, '🍋'], [/orange/, '🍊'], [/apple/, '🍎'], [/banana/, '🍌'], [/strawberr|raspberr/, '🍓'], [/blueberr|blackberr|cranberr/, '🫐'],
-  [/pineapple/, '🍍'], [/mango|peach/, '🥭'], [/pear/, '🍐'], [/cherr/, '🍒'], [/coconut/, '🥥'], [/peanut|walnut|pecan|almond|cashew|hazelnut|pistachio|nut/, '🥜'],
-  [/rice/, '🍚'], [/pasta|spaghetti|penne|noodle|macaroni|linguine|fettuccine|lasagna/, '🍝'], [/bread|bun|baguette|tortilla|pita|crumb/, '🍞'],
-  [/flour|cornstarch|baking/, '🌾'], [/sugar|syrup|honey|molasses/, '🍯'], [/chocolate|cocoa/, '🍫'], [/oil/, '🫒'], [/olive/, '🫒'],
-  [/salt|pepper/, '🧂'], [/wine|brandy|cognac|rum|sherry|beer/, '🍷'], [/water|broth|stock/, '💧'], [/bean|lentil|chickpea|pea/, '🫘'],
-  [/ginger/, '🫚'], [/vinegar|sauce|ketchup|mustard|mayonnaise/, '🥫'], [/cinnamon|cumin|paprika|curry|turmeric|nutmeg|spice|masala|seasoning|vanilla/, '🫙'],
-];
-export function ingEmoji(n) { n = (n || '').toLowerCase(); for (const [re, e] of EMO) if (re.test(n)) return e; return '🥄'; }
-const TYPE_EMO = { plat: '🍲', entree: '🥗', dessert: '🍰', 'petit-dej': '🍳', boulangerie: '🥖', sauce: '🥣', boisson: '🥤' };
-export const typeEmoji = t => TYPE_EMO[t] || '🍽️';
 
 // ------------------------------------------------------------ quantités
 const FR = [[0.125, '⅛'], [0.25, '¼'], [1 / 3, '⅓'], [0.5, '½'], [2 / 3, '⅔'], [0.75, '¾']];

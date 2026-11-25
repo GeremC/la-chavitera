@@ -1,7 +1,8 @@
 import * as S from './store.js';
-import { DB, loadDB, details, DIFF, COST, TYPES, EQUIP, kwFr, name, minutes, ingEmoji, typeEmoji,
+import { DB, loadDB, details, DIFF, COST, TYPES, EQUIP, kwFr, name, minutes,
   fmtQty, unitFamily, toBase, fromBase, foodUrl } from './data.js';
 import * as R from './reco.js';
+import { ic, ingIcon, typeIcon } from './icons.js';
 import { APP_VERSION } from './version.js';
 import { haptic, levelFor, hapticsOn, hapticsSupported, setHaptics } from './haptic.js';
 
@@ -26,17 +27,17 @@ function modal(html) {
   document.body.appendChild(bg); return bg;
 }
 function plate(r, cls = 'plate') {
-  if (r && r.img) return `<img class="${cls}" loading="lazy" src="${esc(r.img)}" alt="" data-fb="${typeEmoji(r.t)}">`;
-  return `<div class="${cls} ph">${typeEmoji(r?.t)}</div>`;
+  if (r && r.img) return `<img class="${cls}" loading="lazy" src="${esc(r.img)}" alt="" data-fb="${r.t || ''}">`;
+  return `<div class="${cls} ph">${typeIcon(r?.t)}</div>`;
 }
 document.addEventListener('error', e => {
   const el = e.target;
-  if (el.tagName === 'IMG' && el.dataset.fb) {
-    const d = document.createElement('div'); d.className = el.className + ' ph'; d.textContent = el.dataset.fb; el.replaceWith(d);
+  if (el.tagName === 'IMG' && 'fb' in el.dataset) {
+    const d = document.createElement('div'); d.className = el.className + ' ph'; d.innerHTML = typeIcon(el.dataset.fb); el.replaceWith(d);
   }
 }, true);
 const stepper = (act, id, val, suffix = '') =>
-  `<span class="stepper"><button data-act="${act}" data-id="${id}" data-d="-1">−</button><span>${val}${suffix}</span><button data-act="${act}" data-id="${id}" data-d="1">+</button></span>`;
+  `<span class="stepper"><button data-act="${act}" data-id="${id}" data-d="-1" aria-label="Moins">${ic('minus')}</button><span>${val}${suffix}</span><button data-act="${act}" data-id="${id}" data-d="1" aria-label="Plus">${ic('plus')}</button></span>`;
 function setTitle(t, actions = '') { $('#title').innerHTML = t; $('#topActions').innerHTML = actions; }
 
 // ------------------------------------------------------------ menu
@@ -80,10 +81,10 @@ function archiveWeek() {
 function askRatings(ids, title) {
   const rows = ids.map(id => DB.byId.get(id)).filter(Boolean).map(r => {
     const rt = S.get('rate:' + r.id, {});
-    return `<div class="hist"><div class="row">${r.img ? `<img src="${esc(r.img)}" alt="" data-fb="${typeEmoji(r.t)}" style="width:56px;height:56px;border-radius:50%;object-fit:cover">` : `<span style="font-size:36px">${typeEmoji(r.t)}</span>`}<div class="spacer">${esc(name(r))}</div></div>
+    return `<div class="hist"><div class="row">${r.img ? `<img src="${esc(r.img)}" alt="" data-fb="${r.t}" style="width:56px;height:56px;border-radius:50%;object-fit:cover">` : `<span class="ph mini">${typeIcon(r.t)}</span>`}<div class="spacer">${esc(name(r))}</div></div>
       <div class="row" style="margin-top:10px;justify-content:center;gap:8px">
-        <button class="pill" data-act="thumb" data-id="${r.id}" data-v="1" ${rt.thumb === 1 ? 'style="background:var(--green);color:#fff"' : ''}>👍 J'ai aimé</button>
-        <button class="pill" data-act="thumb" data-id="${r.id}" data-v="-1" ${rt.thumb === -1 ? 'style="background:var(--ink);color:#fff"' : ''}>👎 Bof</button>
+        <button class="pill" data-act="thumb" data-id="${r.id}" data-v="1" ${rt.thumb === 1 ? 'style="background:var(--green);color:#fff"' : ''}>${ic('thumbUp')} J'ai aimé</button>
+        <button class="pill" data-act="thumb" data-id="${r.id}" data-v="-1" ${rt.thumb === -1 ? 'style="background:var(--ink);color:var(--on-ink)"' : ''}>${ic('thumbDown')} Bof</button>
         <button class="pill" data-act="thumb" data-id="${r.id}" data-v="0">Pas fait</button></div></div>`;
   }).join('');
   const m = modal(`<h2>${esc(title)}</h2><p class="muted">Vos avis affinent les prochaines suggestions.</p>${rows}<button class="btn big" data-act="closeModal">C'est noté</button>`);
@@ -94,7 +95,7 @@ function askRatings(ids, title) {
 function renderMenu() {
   const st = R.settings(), m = menu(), prof = R.tasteProfile();
   const nEx = st.exclusions.length, nEq = st.equipment.length;
-  setTitle('Mon menu', `<button class="ib" data-act="shareMenu" aria-label="Partager">↗︎</button>`);
+  setTitle('Mon menu', `<button class="ib" data-act="shareMenu" aria-label="Partager">${ic('share')}</button>`);
   const old = m.items.length && Date.now() - m.created > 6 * 86400000;
   const items = m.items.map(it => {
     const r = DB.byId.get(it.id); if (!r) return '';
@@ -103,32 +104,32 @@ function renderMenu() {
       <button data-act="open" data-id="${r.id}">${plate(r)}</button>
       <div class="info">
         <h3 data-act="open" data-id="${r.id}">${esc(name(r))}</h3>${r.fr ? `<div class="en">${esc(r.n)}</div>` : ''}
-        <div class="chips">${rs ? `<span class="chip ${rs.cls}">${esc(rs.txt)}</span>` : ''}<span class="chip star">${r.r.toFixed(1)}</span><span class="chip">⏱ ${minutes(r.tm)}</span></div>
+        <div class="chips">${rs ? `<span class="chip ${rs.cls}">${esc(rs.txt)}</span>` : ''}<span class="chip">${ic('starFill', 'sm gold')}${r.r.toFixed(1)}</span><span class="chip">${ic('clock')} ${minutes(r.tm)}</span></div>
         <div class="acts"><button class="pill" data-act="replace" data-id="${r.id}">Remplacer</button>
-          ${stepper('ppl', r.id, it.ppl, ' 🍴')}
-          <button class="round" data-act="remove" data-id="${r.id}" aria-label="Retirer">🗑</button></div>
+          ${stepper('ppl', r.id, it.ppl, ic('users', 'sm'))}
+          <button class="round" data-act="remove" data-id="${r.id}" aria-label="Retirer">${ic('trash')}</button></div>
       </div></div>`;
   }).join('');
   const ex = new Set(m.items.map(i => i.id));
   const extras = R.suggest(3, { exclude: ex, types: ['dessert', 'entree'] });
   view.innerHTML = `
     <div class="prefbar">
-      <button data-act="go" data-tab="profile"><span class="pi">👥<b>${st.people}</b></span>Foyer</button>
-      <button data-act="go" data-tab="profile"><span class="pi ${nEx ? '' : 'off'}">🚫${nEx ? `<b>${nEx}</b>` : ''}</span>Exclusions</button>
-      <button data-act="go" data-tab="profile"><span class="pi">🍳<b>${nEq}</b></span>Équipement</button>
-      <button data-act="go" data-tab="profile"><span class="pi">🧭<b>${Math.round(st.discovery * 10)}</b></span>Découverte</button>
+      <button data-act="go" data-tab="profile"><span class="pi">${ic('users')}<b>${st.people}</b></span>Foyer</button>
+      <button data-act="go" data-tab="profile"><span class="pi ${nEx ? '' : 'off'}">${ic('ban')}${nEx ? `<b>${nEx}</b>` : ''}</span>Exclusions</button>
+      <button data-act="go" data-tab="profile"><span class="pi">${ic('pan')}<b>${nEq}</b></span>Équipement</button>
+      <button data-act="go" data-tab="profile"><span class="pi">${ic('compass')}<b>${Math.round(st.discovery * 10)}</b></span>Découverte</button>
     </div>
-    ${old ? `<div class="banner yellow"><span class="be">📅</span><div class="spacer"><b style="background:none;color:inherit;padding:0">Nouvelle semaine ?</b><br><span class="small">Archivez ce menu pour le retrouver dans l'historique.</span></div><button class="btn small" data-act="archive">Archiver</button></div>` : ''}
-    ${!prof.size ? `<div class="banner"><span class="be">🧑‍🍳</span><div>Notez les recettes après les avoir cuisinées : <b>👍 / 👎</b> et les suggestions s'adaptent à vos goûts.</div></div>` : ''}
+    ${old ? `<div class="banner yellow"><span class="be">${ic('calendar')}</span><div class="spacer"><b style="background:none;color:inherit;padding:0">Nouvelle semaine ?</b><br><span class="small">Archivez ce menu pour le retrouver dans l'historique.</span></div><button class="btn small" data-act="archive">Archiver</button></div>` : ''}
+    ${!prof.size ? `<div class="banner"><span class="be">${ic('chef')}</span><div>Notez les recettes après les avoir cuisinées : <b>${ic('thumbUp', 'sm')} / ${ic('thumbDown', 'sm')}</b> et les suggestions s'adaptent à vos goûts.</div></div>` : ''}
     <div class="row" style="margin:20px 0 4px">${stepper('meals', 0, m.items.length)} <span style="font-size:20px">repas</span><span class="spacer"></span>
-      <button class="btn" data-act="go" data-tab="discover">＋ Ajouter</button></div>
-    ${m.items.length ? items : `<div class="empty"><div class="ee">🍽️</div><h2>Menu vide</h2><p class="muted">On vous propose ${st.meals} recettes selon vos goûts ?</p><button class="btn" data-act="fill">Générer mon menu</button></div>`}
-    <div class="addmeal" data-act="go" data-tab="discover"><div class="plate ph">♨️</div><span class="spacer" style="font-size:18px">Ajouter un autre repas</span><span class="round red">＋</span></div>
-    ${m.items.length ? `<div class="center" style="margin-top:14px"><button class="pill" data-act="archive">✓ Semaine terminée : archiver et noter</button></div>` : ''}
+      <button class="btn" data-act="go" data-tab="discover">${ic('plus')} Ajouter</button></div>
+    ${m.items.length ? items : `<div class="empty"><div class="ee">${ic('utensils')}</div><h2>Menu vide</h2><p class="muted">On vous propose ${st.meals} recettes selon vos goûts ?</p><button class="btn" data-act="fill">Générer mon menu</button></div>`}
+    <div class="addmeal" data-act="go" data-tab="discover"><div class="plate ph">${ic('pot')}</div><span class="spacer" style="font-size:18px">Ajouter un autre repas</span><span class="round red">${ic('plus')}</span></div>
+    ${m.items.length ? `<div class="center" style="margin-top:14px"><button class="pill" data-act="archive">${ic('check')} Semaine terminée : archiver et noter</button></div>` : ''}
     ${extras.length ? `<div class="suggest"><h2>On vous suggère aussi…</h2>${extras.map(r => `
       <div class="meal"><button data-act="open" data-id="${r.id}">${plate(r)}</button><div class="info">
         <h3 data-act="open" data-id="${r.id}">${esc(name(r))}</h3>
-        <div class="chips"><span class="chip star" style="color:var(--ink)">${r.r.toFixed(1)}</span><span class="chip" style="color:var(--ink)">⏱ ${minutes(r.tm)}</span></div>
+        <div class="chips"><span class="chip" style="color:var(--ink)">${ic('starFill', 'sm gold')}${r.r.toFixed(1)}</span><span class="chip" style="color:var(--ink)">${ic('clock')} ${minutes(r.tm)}</span></div>
         <div><button class="pill" data-act="add" data-id="${r.id}">Ajouter</button></div></div></div>`).join('')}</div>` : ''}
     <div style="height:90px"></div>
     ${m.items.length ? `<div class="sticky-cta"><button class="btn big" data-act="go" data-tab="shop">Créer ma liste de courses</button></div>` : ''}`;
@@ -154,29 +155,29 @@ function renderDiscover(keepScroll) {
   list = R.ranked(list);
   // résumé du profil appliqué : la liste se recalcule à chaque changement de préférences
   const prefs = [];
-  if (st.exclusions.length) prefs.push(`🚫 ${st.exclusions.length} exclu${st.exclusions.length > 1 ? 's' : ''}`);
+  if (st.exclusions.length) prefs.push(`${ic('ban', 'sm')} ${st.exclusions.length} exclu${st.exclusions.length > 1 ? 's' : ''}`);
   const missing = EQUIP.filter(([c]) => !st.equipment.includes(c)).length;
-  if (missing) prefs.push(`🍳 ${missing} appareil${missing > 1 ? 's' : ''} en moins`);
-  if (st.maxTime) prefs.push(`⏱ ${minutes(st.maxTime)} max`);
-  prefs.push(`🧭 découverte ${Math.round(st.discovery * 10)}/10`);
+  if (missing) prefs.push(`${ic('pan', 'sm')} ${missing} appareil${missing > 1 ? 's' : ''} en moins`);
+  if (st.maxTime) prefs.push(`${ic('clock', 'sm')} ${minutes(st.maxTime)} max`);
+  prefs.push(`${ic('compass', 'sm')} découverte ${Math.round(st.discovery * 10)}/10`);
   const total = list.length; list = list.slice(0, disc.shown);
   const tchip = (v, l) => `<button class="fchip ${disc.type === v ? 'on' : ''}" data-act="dtype" data-v="${v}">${l}</button>`;
   const tog = (k, l) => `<button class="fchip ${disc[k] ? 'on' : ''}" data-act="dtog" data-k="${k}">${l}</button>`;
   const html = `
-    <div class="search"><span>🔎</span><input id="q" type="search" placeholder="Recette, ingrédient, pays…" value="${esc(disc.q)}" autocomplete="off"></div>
+    <div class="search">${ic('search')}<input id="q" type="search" placeholder="Recette, ingrédient, pays…" value="${esc(disc.q)}" autocomplete="off"></div>
     <div class="fchips">${tchip('plat', 'Plats')}${tchip('entree', 'Entrées & soupes')}${tchip('dessert', 'Desserts')}${tchip('petit-dej', 'Petit-déj')}${tchip('boulangerie', 'Boulangerie')}${tchip('', 'Tout')}</div>
-    <div class="fchips">${tog('quick', '⏱ ≤ 30 min')}${tog('easy', '👌 Très facile')}${tog('cheap', '€ Bon marché')}
-      <button class="fchip ${disc.cuisine ? 'on' : ''}" data-act="dcuisine">🌍 ${esc(disc.cuisine || 'Tous pays')}</button></div>
+    <div class="fchips">${tog('quick', ic('clock', 'sm') + ' ≤ 30 min')}${tog('easy', ic('sparkle', 'sm') + ' Très facile')}${tog('cheap', ic('euro', 'sm') + ' Bon marché')}
+      <button class="fchip ${disc.cuisine ? 'on' : ''}" data-act="dcuisine">${ic('globe', 'sm')} ${esc(disc.cuisine || 'Tous pays')}</button></div>
     <p class="muted small">${total.toLocaleString('fr-FR')} recette${total > 1 ? 's' : ''}${words.length ? '' : ', triées pour vous'}${hidden ? ` · ${hidden.toLocaleString('fr-FR')} masquée${hidden > 1 ? 's' : ''} par votre profil` : ''}</p>
     <button class="prefsum muted small" data-act="go" data-tab="profile">Selon votre profil : ${prefs.join(' · ')} ›</button>
     <div class="grid">${list.map(r => `
       <div class="card"><button data-act="open" data-id="${r.id}" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px">${plate(r)}
         <h3>${esc(name(r))}</h3></button>
-        <div class="chips"><span class="chip star">${r.r.toFixed(1)}</span><span class="chip">⏱ ${minutes(r.tm)}</span>${r.c ? `<span class="chip">${esc(r.c)}</span>` : ''}</div>
-        <button class="round red add ${inMenu(r.id) ? 'in' : ''}" data-act="toggleMenu" data-id="${r.id}">${inMenu(r.id) ? '✓' : '＋'}</button>
+        <div class="chips"><span class="chip">${ic('starFill', 'sm gold')}${r.r.toFixed(1)}</span><span class="chip">${ic('clock')} ${minutes(r.tm)}</span>${r.c ? `<span class="chip">${esc(r.c)}</span>` : ''}</div>
+        <button class="round red add ${inMenu(r.id) ? 'in' : ''}" data-act="toggleMenu" data-id="${r.id}" aria-label="${inMenu(r.id) ? 'Retirer du menu' : 'Ajouter au menu'}">${ic(inMenu(r.id) ? 'check' : 'plus')}</button>
       </div>`).join('')}</div>
     ${total > disc.shown ? `<div class="center" style="margin:20px"><button class="btn ghost" data-act="more" id="more">Voir plus</button></div>` : ''}
-    ${!total ? `<div class="empty"><div class="ee">🤷</div><h2>Rien trouvé</h2><p class="muted">Essayez d'autres mots ou retirez des filtres.</p></div>` : ''}`;
+    ${!total ? `<div class="empty"><div class="ee">${ic('search')}</div><h2>Rien trouvé</h2><p class="muted">Essayez d'autres mots ou retirez des filtres.</p></div>` : ''}`;
   const y = window.scrollY;
   // garder le clavier ouvert si la liste se rafraîchit pendant la saisie (synchro, préférences, notes)
   const prev = document.activeElement?.id === 'q' ? document.activeElement : null;
@@ -219,9 +220,9 @@ async function shoppingList(m) {
 const AISLE_ORDER = ['Fruits & légumes', 'Viandes & poissons', 'Crèmerie & œufs', 'Boulangerie', 'Épicerie salée', 'Épicerie sucrée', 'Épices & condiments', 'Surgelés', 'Boissons', 'Autres'];
 async function renderShop() {
   const m = menu();
-  setTitle('Liste de courses', m.items.length ? `<button class="ib" data-act="shareList" aria-label="Partager">↗︎</button>` : '');
+  setTitle('Liste de courses', m.items.length ? `<button class="ib" data-act="shareList" aria-label="Partager">${ic('share')}</button>` : '');
   if (!m.items.length) {
-    view.innerHTML = `<div class="empty"><div class="ee">🛒</div><h2>Pas encore de liste</h2><p class="muted">Choisissez des recettes : la liste se remplit toute seule.</p><button class="btn" data-act="go" data-tab="menu">Voir mon menu</button></div>`;
+    view.innerHTML = `<div class="empty"><div class="ee">${ic('cart')}</div><h2>Pas encore de liste</h2><p class="muted">Choisissez des recettes : la liste se remplit toute seule.</p><button class="btn" data-act="go" data-tab="menu">Voir mon menu</button></div>`;
     return;
   }
   if (!renderShop.cache || renderShop.cacheKey !== JSON.stringify(m.items)) view.innerHTML = '<div class="loader"></div>';
@@ -234,16 +235,16 @@ async function renderShop() {
   const doneN = main.filter(i => ck(i.key)).length + extras.filter(([, e]) => e.done).length;
   const totalN = main.length + extras.length;
   const row = i => `<div class="item ${ck(i.key) ? 'done' : ''}" data-act="check" data-k="${esc(i.key)}">
-      <span class="box">${ck(i.key) ? '✓' : ''}</span><div class="it">${esc(i.label)}<div class="from">${esc([...i.from].join(' · '))}</div></div><span class="qty">${esc(i.qty)}</span></div>`;
+      <span class="box">${ck(i.key) ? ic('check') : ''}</span><div class="it">${esc(i.label)}<div class="from">${esc([...i.from].join(' · '))}</div></div><span class="qty">${esc(i.qty)}</span></div>`;
   const groups = AISLE_ORDER.map(a => [a, main.filter(i => i.aisle === a)]).filter(([, l]) => l.length);
   view.innerHTML = `
     <p class="muted" style="margin:0">${m.items.length} recette${m.items.length > 1 ? 's' : ''} · ${doneN}/${totalN} articles</p>
     <div class="progress"><i style="width:${totalN ? Math.round(doneN / totalN * 100) : 0}%"></i></div>
     ${groups.map(([a, l]) => `<div class="aisle"><h3>${a}</h3>${l.sort((x, y) => x.label.localeCompare(y.label, 'fr')).map(row).join('')}</div>`).join('')}
     <div class="aisle"><h3>Autres articles</h3>
-      ${extras.map(([id, e]) => `<div class="item ${e.done ? 'done' : ''}"><span class="box" data-act="xcheck" data-id="${id}">${e.done ? '✓' : ''}</span><div class="it" data-act="xcheck" data-id="${id}">${esc(e.txt)}</div><button class="del" data-act="xdel" data-id="${id}">✕</button></div>`).join('')}
-      <form id="addx" class="item"><input class="field" id="xtxt" placeholder="Ajouter : lessive, pain, café…" style="padding:9px 12px"><button class="round red" style="width:40px;height:40px;font-size:22px">＋</button></form></div>
-    ${pantry.length ? `<details class="aisle"><summary><h3>🧂 Placard : à vérifier (${pantry.length})</h3></summary>${pantry.map(row).join('')}</details>` : ''}
+      ${extras.map(([id, e]) => `<div class="item ${e.done ? 'done' : ''}"><span class="box" data-act="xcheck" data-id="${id}">${e.done ? ic('check') : ''}</span><div class="it" data-act="xcheck" data-id="${id}">${esc(e.txt)}</div><button class="del" data-act="xdel" data-id="${id}" aria-label="Supprimer">${ic('x')}</button></div>`).join('')}
+      <form id="addx" class="item"><input class="field" id="xtxt" placeholder="Ajouter : lessive, pain, café…" style="padding:9px 12px"><button class="round red" style="width:40px;height:40px;font-size:22px" aria-label="Ajouter">${ic('plus')}</button></form></div>
+    ${pantry.length ? `<details class="aisle"><summary><h3>${ic('shaker')} Placard : à vérifier (${pantry.length})</h3></summary>${pantry.map(row).join('')}</details>` : ''}
     <p class="muted small center">Les quantités tiennent compte du nombre de personnes de chaque recette.</p>`;
   $('#addx').addEventListener('submit', e => {
     e.preventDefault(); const v = $('#xtxt').value.trim(); if (!v) return; haptic('medium');
@@ -257,22 +258,22 @@ function renderHistory() {
   setTitle('Historique');
   const hs = S.list('hist:').map(([, h]) => h).sort((a, b) => b.date - a.date);
   if (!hs.length) {
-    view.innerHTML = `<div class="empty"><div class="ee">📖</div><h2>Aucun menu archivé</h2><p class="muted">Quand une semaine est finie, appuyez sur « Semaine terminée » dans votre menu : elle arrive ici.</p></div>`;
+    view.innerHTML = `<div class="empty"><div class="ee">${ic('book')}</div><h2>Aucun menu archivé</h2><p class="muted">Quand une semaine est finie, appuyez sur « Semaine terminée » dans votre menu : elle arrive ici.</p></div>`;
     return;
   }
   view.innerHTML = hs.map(h => {
     const rs = h.items.map(i => DB.byId.get(i.id)).filter(Boolean);
     const open = histOpen.has(h.id);
     return `<div class="hist">
-      <div class="row" data-act="hopen" data-id="${h.id}"><div class="spacer"><h3>Semaine du ${fmtDate(h.created || h.date)}</h3><span class="muted small">${rs.length} recettes</span></div><span style="font-size:20px">${open ? '▴' : '▾'}</span></div>
-      <div class="thumbs" data-act="hopen" data-id="${h.id}">${rs.slice(0, 7).map(r => r.img ? `<img src="${esc(r.img)}" loading="lazy" alt="" data-fb="${typeEmoji(r.t)}">` : `<div class="ph">${typeEmoji(r.t)}</div>`).join('')}</div>
+      <div class="row" data-act="hopen" data-id="${h.id}"><div class="spacer"><h3>Semaine du ${fmtDate(h.created || h.date)}</h3><span class="muted small">${rs.length} recettes</span></div><span class="chev">${ic(open ? 'up' : 'down')}</span></div>
+      <div class="thumbs" data-act="hopen" data-id="${h.id}">${rs.slice(0, 7).map(r => r.img ? `<img src="${esc(r.img)}" loading="lazy" alt="" data-fb="${r.t}">` : `<div class="ph">${typeIcon(r.t)}</div>`).join('')}</div>
       ${open ? `<div class="list">${rs.map(r => {
         const rt = S.get('rate:' + r.id, {});
         const it = h.items.find(i => i.id === r.id);
-        return `<div class="li" data-act="open" data-id="${r.id}" data-ppl="${it?.ppl || ''}">${r.img ? `<img src="${esc(r.img)}" loading="lazy" alt="" data-fb="${typeEmoji(r.t)}">` : `<div class="ph">${typeEmoji(r.t)}</div>`}<span class="nm">${esc(name(r))}</span><span>${rt.thumb === 1 ? '👍' : rt.thumb === -1 ? '👎' : ''}${rt.stars ? ' ' + '★'.repeat(rt.stars) : ''}</span></div>`;
+        return `<div class="li" data-act="open" data-id="${r.id}" data-ppl="${it?.ppl || ''}">${r.img ? `<img src="${esc(r.img)}" loading="lazy" alt="" data-fb="${r.t}">` : `<div class="ph">${typeIcon(r.t)}</div>`}<span class="nm">${esc(name(r))}</span><span class="rt">${rt.thumb === 1 ? ic('thumbUp', 'sm') : rt.thumb === -1 ? ic('thumbDown', 'sm') : ''}${rt.stars ? ' ' + ic('starFill', 'sm').repeat(rt.stars) : ''}</span></div>`;
       }).join('')}
-        <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn small" data-act="redo" data-id="${h.id}">↺ Refaire ce menu</button>
-        <button class="pill" data-act="hrate" data-id="${h.id}">Noter</button><span class="spacer"></span><button class="pill" data-act="hdel" data-id="${h.id}">🗑</button></div></div>` : ''}
+        <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn small" data-act="redo" data-id="${h.id}">${ic('redo')} Refaire ce menu</button>
+        <button class="pill" data-act="hrate" data-id="${h.id}">Noter</button><span class="spacer"></span><button class="pill" data-act="hdel" data-id="${h.id}" aria-label="Supprimer">${ic('trash')}</button></div></div>` : ''}
     </div>`;
   }).join('');
 }
@@ -293,7 +294,7 @@ function renderProfile() {
   const sy = S.sync;
   const exLabel = k => ingLex?.fr.get(k) ? `${ingLex.fr.get(k)}` : k;
   view.innerHTML = `
-    <div class="panel"><h3>👥 Foyer</h3><p class="muted small">Valeurs par défaut des nouveaux menus.</p>
+    <div class="panel"><h3>${ic('users')} Foyer</h3><p class="muted small">Valeurs par défaut des nouveaux menus.</p>
       <div class="row"><span class="spacer">Personnes</span>${stepper('setPeople', 0, st.people)}</div>
       <div class="row" style="margin-top:10px"><span class="spacer">Repas par semaine</span>${stepper('setMeals', 0, st.meals)}</div>
       <div style="margin-top:14px"><span>Dans le menu de la semaine :</span><div class="fchips" style="margin-top:8px;flex-wrap:wrap">
@@ -301,15 +302,15 @@ function renderProfile() {
       <div style="margin-top:6px"><span>Temps max conseillé :</span><div class="fchips" style="margin-top:8px">
         ${[[0, 'Sans limite'], [30, '30 min'], [45, '45 min'], [60, '1 h']].map(([v, l]) => `<button class="fchip ${st.maxTime === v ? 'on' : ''}" data-act="maxt" data-v="${v}">${l}</button>`).join('')}</div></div>
     </div>
-    <div class="panel"><h3>🚫 Ingrédients exclus</h3><p class="muted small">Allergies, ingrédients que vous détestez : ils ne seront jamais proposés.</p>
-      <div class="chips">${st.exclusions.map(x => `<button class="xchip" data-act="unex" data-v="${esc(x)}">${esc(exLabel(x))} ✕</button>`).join('') || '<span class="muted small">Aucun pour l\'instant</span>'}</div>
+    <div class="panel"><h3>${ic('ban')} Ingrédients exclus</h3><p class="muted small">Allergies, ingrédients que vous détestez : ils ne seront jamais proposés.</p>
+      <div class="chips">${st.exclusions.map(x => `<button class="xchip" data-act="unex" data-v="${esc(x)}">${esc(exLabel(x))} ${ic('x', 'sm')}</button>`).join('') || '<span class="muted small">Aucun pour l\'instant</span>'}</div>
       <input class="field" id="exq" placeholder="Ex : champignons, coriandre, crevettes…" style="margin-top:12px" autocomplete="off"><div class="sug" id="exsug"></div></div>
-    <div class="panel"><h3>🍳 Équipement</h3><p class="muted small">Les recettes qui demandent un appareil que vous n'avez pas sont masquées.</p>
-      <div class="eqgrid">${EQUIP.map(([c, e, l]) => `<button class="eq ${st.equipment.includes(c) ? 'on' : ''}" data-act="eq" data-v="${c}"><span class="e">${e}</span>${l}</button>`).join('')}</div></div>
-    <div class="panel"><h3>🧭 Mode découverte</h3><p class="muted small">Plus vous montez, plus on vous pousse vers des pays et des ingrédients jamais cuisinés.</p>
+    <div class="panel"><h3>${ic('pan')} Équipement</h3><p class="muted small">Les recettes qui demandent un appareil que vous n'avez pas sont masquées.</p>
+      <div class="eqgrid">${EQUIP.map(([c, e, l]) => `<button class="eq ${st.equipment.includes(c) ? 'on' : ''}" data-act="eq" data-v="${c}"><span class="e">${ic(e)}</span>${l}</button>`).join('')}</div></div>
+    <div class="panel"><h3>${ic('compass')} Mode découverte</h3><p class="muted small">Plus vous montez, plus on vous pousse vers des pays et des ingrédients jamais cuisinés.</p>
       <input type="range" class="slider" id="discov" min="0" max="1" step="0.05" value="${st.discovery}">
       <div class="row small muted"><span>Valeurs sûres</span><span class="spacer"></span><span>Aventuriers</span></div></div>
-    <div class="panel"><h3>🔄 Synchro du foyer</h3>
+    <div class="panel"><h3>${ic('sync')} Synchro du foyer</h3>
       ${!S.syncConfigured() ? `<p class="muted small">La synchro n'est pas encore configurée (Supabase dans <code>config.js</code>). En attendant, tout reste sur ce téléphone.</p>` :
         code ? `<p class="small"><span class="syncdot ${sy.status === 'ok' ? 'ok' : sy.status === 'err' ? 'err' : ''}"></span>${sy.status === 'ok' ? 'Synchronisé ' + (sy.last ? 'à ' + sy.last.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '') : sy.status === 'offline' ? 'Hors ligne' : sy.status === 'err' ? 'Erreur : ' + esc(sy.error) : 'Connexion…'}</p>
           <p class="muted small">Code du foyer, à saisir sur l'autre téléphone (dans l'app installée) :</p><div class="code">${esc(code)}</div>
@@ -319,11 +320,11 @@ function renderProfile() {
           <p class="muted small" style="margin-top:14px">Ou rejoindre un foyer existant :</p>
           <div class="row"><input class="field" id="joincode" placeholder="XXXX-XXXX-XXXX-XXXX" autocapitalize="characters"><button class="btn small" data-act="joinHH">OK</button></div>`}
     </div>
-    <div class="panel"><h3>ℹ️ L'app</h3>
-      <p class="small">${DB.list.length.toLocaleString('fr-FR')} recettes notées ≥ 4,5★ par la communauté Food.com, sans doublons.<br>
+    <div class="panel"><h3>${ic('info')} L'app</h3>
+      <p class="small">${DB.list.length.toLocaleString('fr-FR')} recettes notées au moins 4,5/5 par la communauté Food.com, sans doublons.<br>
       <span class="muted">Données ${esc(DB.meta?.v || '')} du ${esc(DB.meta?.built || '')} · App ${esc(APP_VERSION.slice(0, 7))}</span></p>
       <div class="row" style="flex-wrap:wrap"><button class="pill" data-act="checkUpdate">Chercher une mise à jour</button><button class="pill" data-act="reset">Réinitialiser ce téléphone</button></div>
-      ${hapticsSupported() ? `<div class="row" style="margin-top:10px"><span class="spacer small">📳 Vibrations des boutons</span><button class="fchip ${hapticsOn() ? 'on' : ''}" data-act="haptics">${hapticsOn() ? 'Activées' : 'Désactivées'}</button></div>` : ''}
+      ${hapticsSupported() ? `<div class="row" style="margin-top:10px"><span class="spacer small">Vibrations des boutons</span><button class="fchip ${hapticsOn() ? 'on' : ''}" data-act="haptics">${hapticsOn() ? 'Activées' : 'Désactivées'}</button></div>` : ''}
       <p class="muted small" style="margin-top:12px">iPhone : ouvrez le site dans Safari, bouton Partager, puis « Sur l'écran d'accueil ».</p></div>`;
   const discov = $('#discov');
   discov.addEventListener('change', () => saveSettings({ discovery: +discov.value }));
@@ -333,7 +334,7 @@ function renderProfile() {
     if (q.length < 2) { exsug.innerHTML = ''; return; }
     const res = lex.arr.filter(([k, fr]) => norm(k).includes(q) || norm(fr || '').includes(q)).slice(0, 12);
     exsug.innerHTML = res.map(([k, fr]) => `<button data-act="addex" data-v="${esc(k)}">${esc(fr || k)}${fr ? ` <span class="muted small">(${esc(k)})</span>` : ''}</button>`).join('')
-      + `<button data-act="addex" data-v="${esc(exq.value.trim().toLowerCase())}">＋ « ${esc(exq.value.trim())} »</button>`;
+      + `<button data-act="addex" data-v="${esc(exq.value.trim().toLowerCase())}">${ic('plus', 'sm')} « ${esc(exq.value.trim())} »</button>`;
   });
 }
 function saveSettings(patch) { S.set('settings', { ...R.settings(), ...patch }); }
@@ -361,31 +362,31 @@ async function renderSheet(top) {
   const rt = S.get('rate:' + id, {}), fav = S.get('fav:' + id, false), inM = inMenu(id);
   const main = d.ing.filter(e => !e.p), pantry = d.ing.filter(e => e.p);
   const full = Math.round(r.r * 2) / 2;
-  const starsTxt = '★'.repeat(Math.floor(full)) + (full % 1 ? '⯪' : '') + '☆'.repeat(5 - Math.ceil(full));
+  const starsTxt = ic('starFill').repeat(Math.floor(full)) + (full % 1 ? ic('starHalf') : '') + ic('star').repeat(5 - Math.ceil(full));
   const kws = (d.kw || []).map(kwFr).filter(Boolean);
   const steps = showEn && d.stEn ? d.stEn : d.st;
   sheet.innerHTML = `<div class="inner">
-    <div class="hero">${plate(r)}<button class="fab l" data-act="close" aria-label="Fermer">✕</button>
-      <button class="fab r fav" data-act="fav" data-id="${id}" aria-label="Favori">${fav ? '♥' : '♡'}</button></div>
+    <div class="hero">${plate(r)}<button class="fab l" data-act="close" aria-label="Fermer">${ic('x')}</button>
+      <button class="fab r fav" data-act="fav" data-id="${id}" aria-label="Favori">${ic(fav ? 'heartFill' : 'heart')}</button></div>
     <div class="rhead"><div class="stars">${starsTxt}</div><div class="muted">${r.rc.toLocaleString('fr-FR')} avis · ${r.r.toFixed(2).replace('.', ',')}/5</div>
       <h2>${esc(name(r))}</h2>${r.fr ? `<div class="en">${esc(r.n)}</div>` : ''}<div class="bar"></div>
       ${d.desc ? `<p style="margin:0">${esc(d.desc)}</p>` : ''}</div>
     <div class="tagrow">
       <div><span class="euro">${'€'.repeat(r.p)}<i>${'€'.repeat(3 - r.p)}</i></span>${COST[r.p]}</div>
       <div><span class="diffbars">${[1, 2, 3, 4].map(i => `<i class="${i <= r.d ? 'on' : ''}" style="height:${6 + i * 4}px"></i>`).join('')}</span>${DIFF[r.d]}</div>
-      <div><span class="tv">${typeEmoji(r.t)}</span>${TYPES[r.t] || ''}</div>
-      <div><span class="tv">🌍</span>${esc(r.c || 'Monde')}</div>
+      <div><span class="tv">${typeIcon(r.t)}</span>${TYPES[r.t] || ''}</div>
+      <div><span class="tv">${ic('globe')}</span>${esc(r.c || 'Monde')}</div>
     </div>
     <div class="timesband">
-      <div><div class="ic">🔪</div><b>${minutes(d.prep)}</b><span>Préparation</span></div>
-      <div><div class="ic">♨️</div><b>${minutes(d.cook)}</b><span>Cuisson</span></div>
-      <div><div class="ic">🔥</div><b>${r.kc ? r.kc + ' kcal' : '?'}</b><span>Par portion</span></div>
+      <div><div class="ic">${ic('knife')}</div><b>${minutes(d.prep)}</b><span>Préparation</span></div>
+      <div><div class="ic">${ic('pot')}</div><b>${minutes(d.cook)}</b><span>Cuisson</span></div>
+      <div><div class="ic">${ic('flame')}</div><b>${r.kc ? r.kc + ' kcal' : '?'}</b><span>Par portion</span></div>
     </div>
-    ${kws.length || r.eq?.length ? `<div class="kw chips" style="margin-top:16px">${r.eq.map(e => { const q = EQUIP.find(x => x[0] === e); return q ? `<span class="chip">${q[1]} ${q[2]}</span>` : ''; }).join('')}${kws.map(k => `<span class="chip">${esc(k)}</span>`).join('')}</div>` : ''}
+    ${kws.length || r.eq?.length ? `<div class="kw chips" style="margin-top:16px">${r.eq.map(e => { const q = EQUIP.find(x => x[0] === e); return q ? `<span class="chip">${ic(q[1], 'sm')} ${q[2]}</span>` : ''; }).join('')}${kws.map(k => `<span class="chip">${esc(k)}</span>`).join('')}</div>` : ''}
     <div class="block"><h3>Ingrédients</h3>
-      <div class="forppl">Pour ${stepper('sppl', id, ppl, ' 🍴')}</div>
+      <div class="forppl">Pour ${stepper('sppl', id, ppl, ic('users', 'sm'))}</div>
       ${!d.units ? `<p class="muted small center">La source ne précise pas toujours les unités : quantités indicatives (adaptées à ${ppl} pers.).</p>` : ''}
-      <div class="ings">${main.map(e => `<div class="ing"><div class="bub">${ingEmoji(e.n)}</div><b>${e.q != null ? esc(fmtQty(e.q * f, e.u)) : ''}</b>${esc(cap(e.fr || e.n))}${e.raw && !e.fr ? `<div class="orig">${esc(e.raw)}</div>` : ''}</div>`).join('')}</div>
+      <div class="ings">${main.map(e => `<div class="ing"><div class="bub">${ingIcon(e.n)}</div><b>${e.q != null ? esc(fmtQty(e.q * f, e.u)) : ''}</b>${esc(cap(e.fr || e.n))}${e.raw && !e.fr ? `<div class="orig">${esc(e.raw)}</div>` : ''}</div>`).join('')}</div>
       ${pantry.length ? `<div class="pantry"><b>Vérifiez que vous avez…</b><br><span class="muted">${pantry.map(e => esc(cap(e.fr || e.n)) + (e.q != null && e.u ? ' (' + esc(fmtQty(e.q * f, e.u)) + ')' : '')).join(' · ')}</span></div>` : ''}
     </div>
     <div class="block steps"><h3>Recette</h3>
@@ -393,8 +394,8 @@ async function renderSheet(top) {
       ${steps.map((s, i) => `<div class="step"><span class="n">${i + 1}</span><div class="tx"><div class="lbl">Étape ${i + 1}</div>${esc(s)}</div></div>`).join('')}
     </div>
     <div class="rate"><h3>Vous l'avez cuisinée ?</h3>
-      <div class="thumbs"><button class="${rt.thumb === 1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="1">👍</button><button class="${rt.thumb === -1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="-1">👎</button></div>
-      <div class="st">${[1, 2, 3, 4, 5].map(i => `<button class="${(rt.stars || 0) >= i ? 'on' : ''}" data-act="stars" data-id="${id}" data-v="${i}">★</button>`).join('')}</div></div>
+      <div class="thumbs"><button class="${rt.thumb === 1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="1" aria-label="J'ai aimé">${ic('thumbUp')}</button><button class="${rt.thumb === -1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="-1" aria-label="Bof">${ic('thumbDown')}</button></div>
+      <div class="st">${[1, 2, 3, 4, 5].map(i => `<button class="${(rt.stars || 0) >= i ? 'on' : ''}" data-act="stars" data-id="${id}" data-v="${i}" aria-label="${i} étoile${i > 1 ? 's' : ''}">${ic((rt.stars || 0) >= i ? 'starFill' : 'star')}</button>`).join('')}</div></div>
     <div class="srcline">Recette de la communauté Food.com${d.by ? ' · par ' + esc(d.by) : ''} · <a href="${foodUrl(r)}" target="_blank" rel="noopener">voir l'original</a></div>
     <div class="sticky-cta"><button class="btn big" data-act="${inM ? 'sremove' : 'sadd'}" data-id="${id}">${inM ? 'Retirer du menu' : 'Ajouter au menu'}</button></div>
   </div>`;
@@ -423,7 +424,7 @@ const A = {
   thumb: el => {
     const k = 'rate:' + el.dataset.id, cur = S.get(k, {}), v = +el.dataset.v;
     S.set(k, { ...cur, thumb: cur.thumb === v ? 0 : v, at: Date.now() });
-    const mb = el.closest('.modal'); if (mb) { mb.querySelectorAll(`[data-id="${el.dataset.id}"]`).forEach(b => b.removeAttribute('style')); if (v === 1) el.style.cssText = 'background:var(--green);color:#fff'; if (v === -1) el.style.cssText = 'background:var(--ink);color:#fff'; }
+    const mb = el.closest('.modal'); if (mb) { mb.querySelectorAll(`[data-id="${el.dataset.id}"]`).forEach(b => b.removeAttribute('style')); if (v === 1) el.style.cssText = 'background:var(--green);color:#fff'; if (v === -1) el.style.cssText = 'background:var(--ink);color:var(--on-ink)'; }
   },
   stars: el => { const k = 'rate:' + el.dataset.id, cur = S.get(k, {}); S.set(k, { ...cur, stars: +el.dataset.v, thumb: cur.thumb || (+el.dataset.v >= 4 ? 1 : +el.dataset.v <= 2 ? -1 : 0), at: Date.now() }); toast('Merci, c\'est noté'); },
   dtype: el => { disc.type = el.dataset.v; disc.shown = 30; renderDiscover(); },
@@ -444,7 +445,7 @@ const A = {
       + S.list(`extra:${m.id}:`).filter(([, e]) => !e.done).map(([, e]) => '\n- ' + e.txt).join('');
     share(txt);
   },
-  shareMenu: () => share('Menu de la semaine 🍽️\n\n' + menu().items.map(i => DB.byId.get(i.id)).filter(Boolean).map(r => '- ' + name(r) + ' (' + foodUrl(r) + ')').join('\n')),
+  shareMenu: () => share('Menu de la semaine\n\n' + menu().items.map(i => DB.byId.get(i.id)).filter(Boolean).map(r => '- ' + name(r) + ' (' + foodUrl(r) + ')').join('\n')),
   hopen: el => { const id = el.dataset.id; histOpen.has(id) ? histOpen.delete(id) : histOpen.add(id); renderHistory(); },
   redo: el => {
     const h = S.get('hist:' + el.dataset.id); if (!h) return;
@@ -462,7 +463,7 @@ const A = {
   addex: el => { const st = R.settings(), v = el.dataset.v; if (v && !st.exclusions.includes(v)) saveSettings({ exclusions: [...st.exclusions, v] }); },
   unex: el => saveSettings({ exclusions: R.settings().exclusions.filter(x => x !== el.dataset.v) }),
   createHH: async () => { await S.setHousehold(S.newCode()); toast('Foyer créé : partagez le code'); renderProfile(); },
-  joinHH: async () => { const v = $('#joincode').value.trim(); if (v.replace(/-/g, '').length < 16) return toast('Code incomplet'); await S.setHousehold(v); toast(S.sync.status === 'ok' ? 'Foyer rejoint 🎉' : 'Code enregistré'); renderProfile(); },
+  joinHH: async () => { const v = $('#joincode').value.trim(); if (v.replace(/-/g, '').length < 16) return toast('Code incomplet'); await S.setHousehold(v); toast(S.sync.status === 'ok' ? 'Foyer rejoint' : 'Code enregistré'); renderProfile(); },
   copyCode: () => { navigator.clipboard?.writeText(S.householdCode()); toast('Code copié'); },
   leave: () => { if (confirm('Ce téléphone ne sera plus synchronisé. Continuer ?')) { S.setHousehold(''); renderProfile(); } },
   checkUpdate: async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) { await reg.update(); toast('Vérifié : si une version existe, l\'app va se recharger'); } else location.reload(); },
@@ -485,6 +486,7 @@ function switchTab(t) {
   if (!sheet.hidden) history.back();
   window.scrollTo(0, 0); render();
 }
+document.querySelectorAll('[data-ic]').forEach(el => { el.innerHTML = ic(el.dataset.ic); });
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { haptic('light'); switchTab(b.dataset.tab); } });
 function render() {
   if (!DB.ready) return;
@@ -510,7 +512,7 @@ async function boot() {
   await loadDB();
   if (DB.error === 'nodata') {
     setTitle('La Chavitera');
-    view.innerHTML = `<div class="empty"><div class="ee">🧑‍🍳</div><h2>La base de recettes arrive</h2><p class="muted">Les données ne sont pas encore générées. Lancez le workflow « Construire les recettes » sur GitHub (voir le README).</p></div>`;
+    view.innerHTML = `<div class="empty"><div class="ee">${ic('chef')}</div><h2>La base de recettes arrive</h2><p class="muted">Les données ne sont pas encore générées. Lancez le workflow « Construire les recettes » sur GitHub (voir le README).</p></div>`;
     return;
   }
   loadLex();
