@@ -3,6 +3,7 @@ import { DB, loadDB, details, DIFF, COST, TYPES, EQUIP, kwFr, name, minutes, ing
   fmtQty, unitFamily, toBase, fromBase, foodUrl } from './data.js';
 import * as R from './reco.js';
 import { APP_VERSION } from './version.js';
+import { haptic, levelFor, hapticsOn, hapticsSupported, setHaptics } from './haptic.js';
 
 const $ = s => document.querySelector(s);
 const view = $('#view'), sheet = $('#sheet');
@@ -245,7 +246,7 @@ async function renderShop() {
     ${pantry.length ? `<details class="aisle"><summary><h3>🧂 Placard : à vérifier (${pantry.length})</h3></summary>${pantry.map(row).join('')}</details>` : ''}
     <p class="muted small center">Les quantités tiennent compte du nombre de personnes de chaque recette.</p>`;
   $('#addx').addEventListener('submit', e => {
-    e.preventDefault(); const v = $('#xtxt').value.trim(); if (!v) return;
+    e.preventDefault(); const v = $('#xtxt').value.trim(); if (!v) return; haptic('medium');
     S.set(`extra:${m.id}:${S.uid()}`, { txt: v, done: false });
   });
 }
@@ -322,6 +323,7 @@ function renderProfile() {
       <p class="small">${DB.list.length.toLocaleString('fr-FR')} recettes notées ≥ 4,5★ par la communauté Food.com, sans doublons.<br>
       <span class="muted">Données ${esc(DB.meta?.v || '')} du ${esc(DB.meta?.built || '')} · App ${esc(APP_VERSION.slice(0, 7))}</span></p>
       <div class="row" style="flex-wrap:wrap"><button class="pill" data-act="checkUpdate">Chercher une mise à jour</button><button class="pill" data-act="reset">Réinitialiser ce téléphone</button></div>
+      ${hapticsSupported() ? `<div class="row" style="margin-top:10px"><span class="spacer small">📳 Vibrations des boutons</span><button class="fchip ${hapticsOn() ? 'on' : ''}" data-act="haptics">${hapticsOn() ? 'Activées' : 'Désactivées'}</button></div>` : ''}
       <p class="muted small" style="margin-top:12px">iPhone : ouvrez le site dans Safari, bouton Partager, puis « Sur l'écran d'accueil ».</p></div>`;
   const discov = $('#discov');
   discov.addEventListener('change', () => saveSettings({ discovery: +discov.value }));
@@ -464,6 +466,7 @@ const A = {
   copyCode: () => { navigator.clipboard?.writeText(S.householdCode()); toast('Code copié'); },
   leave: () => { if (confirm('Ce téléphone ne sera plus synchronisé. Continuer ?')) { S.setHousehold(''); renderProfile(); } },
   checkUpdate: async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) { await reg.update(); toast('Vérifié : si une version existe, l\'app va se recharger'); } else location.reload(); },
+  haptics: () => { setHaptics(!hapticsOn()); renderProfile(); },
   reset: () => { if (confirm('Effacer menu, historique et réglages de CE téléphone ?')) { S.resetLocal(); location.reload(); } },
 };
 async function share(text) {
@@ -472,7 +475,7 @@ async function share(text) {
 }
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
-  const fn = A[el.dataset.act]; if (fn) { e.preventDefault(); fn(el); }
+  const fn = A[el.dataset.act]; if (fn) { e.preventDefault(); haptic(levelFor(el.dataset.act)); fn(el); }
 });
 
 // ------------------------------------------------------------ navigation & rendu
@@ -482,7 +485,7 @@ function switchTab(t) {
   if (!sheet.hidden) history.back();
   window.scrollTo(0, 0); render();
 }
-$('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) switchTab(b.dataset.tab); });
+$('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { haptic('light'); switchTab(b.dataset.tab); } });
 function render() {
   if (!DB.ready) return;
   const n = menu().items.length, b = $('#shopBadge'); b.hidden = !n; b.textContent = n;
