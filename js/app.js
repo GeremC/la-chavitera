@@ -31,9 +31,24 @@ function toast(msg, action) {
 function modal(html) {
   const bg = document.createElement('div'); bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal">${html}</div>`;
-  bg.addEventListener('click', e => { if (e.target === bg) bg.remove(); });
-  document.body.appendChild(bg); return bg;
+  bg.addEventListener('click', e => { if (e.target === bg) closeModalEl(bg); });
+  document.body.appendChild(bg);
+  // une entrée d'historique : le bouton / geste retour ferme la fenêtre au lieu de quitter l'écran
+  navPush({ ...navState(), modal: 1 });
+  return bg;
 }
+function closeModalEl(bg) {
+  if (navState().modal) history.back(); else bg?.remove();
+}
+
+// ------------------------------------------------------------ historique (bouton / geste retour)
+// Pile : Préparer est la racine (d = 0). Les autres onglets sont un niveau au-dessus (on les remplace
+// entre eux), la recherche, la fiche recette et les fenêtres empilent un niveau de plus.
+// Retour depuis un onglet ramène à Préparer ; retour depuis Préparer quitte l'app, comme une app native.
+const navState = () => history.state && typeof history.state.d === 'number' ? history.state : { tab: 'menu', d: 0 };
+const navPush = st => history.pushState({ ...st, d: navState().d + 1 }, '');
+const navReplace = st => history.replaceState(st, '');
+let pendingTab = null;
 function plate(r, cls = 'plate') {
   if (r && r.img) return `<img class="${cls}" loading="lazy" src="${esc(r.img)}" alt="" data-fb="${r.t || ''}">`;
   return `<div class="${cls} ph">${typeIcon(r?.t)}</div>`;
@@ -140,7 +155,7 @@ function renderMenu() {
   const nFav = favIds().length;
   view.innerHTML = `
     <div class="searchrow"><button class="search fake" data-act="openSearch">${ic('search')}<span>Rechercher une recette…</span></button>
-      <button class="favbtn" data-act="openFavs" aria-label="Recettes favorites">${ic('heart')}${nFav ? `<b>${nFav}</b>` : ''}</button></div>
+      <button class="favbtn" data-act="openFavs" aria-label="Recettes favorites${nFav ? ` (${nFav})` : ''}">${ic('heartFill')}</button></div>
     ${settingsBar(st)}
     ${old ? `<div class="banner yellow"><span class="be">${ic('calendar')}</span><div class="spacer"><b style="background:none;color:inherit;padding:0">Nouvelle semaine ?</b><br><span class="small">Archivez ce menu pour le retrouver dans les archives.</span></div><button class="btn small" data-act="archive">Archiver</button></div>` : ''}
     <div class="row" style="margin:20px 0 4px">${stepper('meals', 0, m.items.length)} <span style="font-size:20px">repas</span><span class="spacer"></span>
@@ -417,22 +432,31 @@ function renderProfile() {
 function saveSettings(patch) { S.set('settings', { ...R.settings(), ...patch }); }
 
 // ------------------------------------------------------------ fiche recette
-async function openRecipe(id, ppl) {
+async function openRecipe(id, ppl, fromPop) {
   const r = DB.byId.get(id); if (!r) return;
   const m = menu(), it = m.items.find(i => i.id === id);
   sheetState = { id, ppl: ppl || it?.ppl || R.settings().people, showEn: false };
   sheet.classList.remove('closing'); sheet.hidden = false; document.body.style.overflow = 'hidden';
   sheet.innerHTML = '<div class="loader"></div>';
-  history.pushState({ sheet: id }, '');
+  if (!fromPop) navPush({ tab, sheet: id });
   await renderSheet(true);
 }
-function closeSheet() {
+function closeSheet(instant) {
   sheetState = null; T.setRecipe(null); document.body.style.overflow = '';
-  if (reduceMotion() || sheet.hidden) { sheet.hidden = true; sheet.innerHTML = ''; return; }
+  if (instant || reduceMotion() || sheet.hidden) { sheet.hidden = true; sheet.innerHTML = ''; return; }
   sheet.classList.add('closing');
   setTimeout(() => { sheet.classList.remove('closing'); if (!sheetState) { sheet.hidden = true; sheet.innerHTML = ''; } }, 220);
 }
-window.addEventListener('popstate', () => { if (!sheet.hidden) closeSheet(); });
+window.addEventListener('popstate', e => {
+  const st = navState();
+  // le navigateur a déjà animé le retour (geste iOS, retour prédictif Android) : pas de seconde animation
+  const uaAnim = !!e.hasUAVisualTransition;
+  if (!st.modal) document.querySelectorAll('.modal-bg').forEach(m => m.remove());
+  if (!st.sheet && !sheet.hidden) closeSheet(uaAnim);
+  if (pendingTab) { const t = pendingTab; pendingTab = null; switchTab(t); return; }
+  if (st.tab && st.tab !== tab) switchTab(st.tab, { fromPop: true, noAnim: uaAnim });
+  if (st.sheet && sheet.hidden) openRecipe(st.sheet, 0, true);
+});
 
 // texte des étapes : grandes parties, ingrédients illustrés, durées → minuteur, températures
 function stepsHtml(steps, ings, f) {
@@ -506,8 +530,8 @@ async function renderSheet(top) {
 const A = {
   go: el => switchTab(el.dataset.tab),
   open: el => openRecipe(+el.dataset.id, +el.dataset.ppl || 0),
-  close: () => history.back(),
-  closeModal: el => el.closest('.modal-bg').remove(),
+  close: () => { if (navState().sheet) history.back(); else closeSheet(); },
+  closeModal: el => closeModalEl(el.closest('.modal-bg')),
   add: el => addToMenu(+el.dataset.id),
   remove: el => removeFromMenu(+el.dataset.id),
   replace: el => replaceInMenu(+el.dataset.id),
@@ -550,7 +574,7 @@ const A = {
     const counts = {}; DB.list.forEach(r => { if (r.c) counts[r.c] = (counts[r.c] || 0) + 1; });
     modal(`<h2>Choisir un pays</h2><div class="sug"><button data-act="setCuisine" data-v="">Tous pays</button>${cs.map(c => `<button data-act="setCuisine" data-v="${esc(c)}">${esc(c)} <span class="muted small">${counts[c] || 0}</span></button>`).join('')}</div>`);
   },
-  setCuisine: el => { disc.cuisine = el.dataset.v; disc.shown = 30; el.closest('.modal-bg').remove(); renderDiscover(); },
+  setCuisine: el => { disc.cuisine = el.dataset.v; disc.shown = 30; closeModalEl(el.closest('.modal-bg')); renderDiscover(); },
   more: () => { disc.shown += 30; renderDiscover(true); },
   shopDone: () => { S.set(`shopdone:${menu().id}`, Date.now()); toast('Courses validées, bon appétit !'); switchTab('cook'); },
   shopReopen: () => S.del(`shopdone:${menu().id}`),
@@ -626,17 +650,26 @@ document.addEventListener('click', e => {
 // ------------------------------------------------------------ navigation & rendu
 const TAB_ORDER = { menu: 0, discover: 0.5, shop: 1, cook: 2, history: 3, profile: 4 };
 const reduceMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-function switchTab(t) {
+function switchTab(t, opts = {}) {
   const from = tab;
-  if (!sheet.hidden) history.back();
-  if (t === from) { window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' }); return; }
+  if (!opts.fromPop) {
+    // fiche ou fenêtre ouverte : on la referme par l'historique, puis on change d'onglet
+    const cur = navState();
+    if (cur.sheet || cur.modal) { pendingTab = t; history.back(); return; }
+    if (t === from) { window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' }); return; }
+    if (t === 'menu' && cur.d > 0) { history.go(-cur.d); return; } // retour à la racine : le popstate affiche Préparer
+    if (t === 'discover') navPush({ tab: t });
+    else if (cur.d === 0) navPush({ tab: t });
+    else navReplace({ tab: t, d: cur.d });
+  }
+  if (t === from) return;
   const update = () => {
     tab = t;
     document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (t === 'discover' ? 'menu' : t)));
     window.scrollTo(0, 0);
     return render();
   };
-  if (reduceMotion()) return update();
+  if (reduceMotion() || opts.noAnim) return update();
   const dir = TAB_ORDER[t] >= TAB_ORDER[from] ? 'fwd' : 'back';
   document.documentElement.dataset.dir = dir;
   if (document.startViewTransition) {
@@ -683,6 +716,7 @@ async function boot() {
   }
   loadLex();
   try { const r = await fetch('data/ing_img.json?v=' + DB.meta.v); if (r.ok) ingImg = await r.json(); } catch {}
+  navReplace({ tab: 'menu', d: 0 });
   render();
   S.startSync();
 }
