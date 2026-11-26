@@ -1,7 +1,5 @@
 name: Construire les recettes
 on:
-  push:
-    branches: [claude/modernise-ui-fr]  # TEMPORAIRE : génère les données de la PR, retiré avant fusion
   workflow_dispatch:
     inputs:
       min_rating:
