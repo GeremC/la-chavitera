@@ -33,16 +33,20 @@ DATA = ROOT / "data"
 BUCKETS = 200
 
 # ---------------------------------------------------------------- utilitaires
-def r_vector(v):
-    """Convertit 'c("a", "b")' / '"a"' / array / NA en liste Python."""
+def r_vector(v, keep_na=False):
+    """Convertit 'c("a", "b")' / '"a"' / array / NA en liste Python.
+    keep_na=True garde les trous (None) pour rester aligné avec une autre colonne
+    (indispensable pour les quantités : sinon une seule valeur manquante décale tout)."""
     if v is None:
         return []
     if isinstance(v, float) and math.isnan(v):
         return []
     if hasattr(v, "tolist") and not isinstance(v, str):
-        return [str(x) for x in v.tolist() if x is not None and str(x) != "nan"]
+        v = v.tolist()
     if isinstance(v, (list, tuple)):
-        return [str(x) for x in v]
+        if keep_na:
+            return [None if x is None or str(x) in ("nan", "NA", "") else str(x) for x in v]
+        return [str(x) for x in v if x is not None and str(x) != "nan"]
     s = str(v).strip()
     if s in ("", "NA", "character(0)", "nan"):
         return []
@@ -281,6 +285,27 @@ def load_recipenlg(path, wanted_ids):
     return out
 
 
+def align_qty(qty, parts):
+    """Aligne les quantités sur les ingrédients. Food.com a parfois plus de quantités que
+    d'ingrédients (« salt and pepper » sans quantité, ingrédients retirés...). Si les longueurs
+    diffèrent, on n'affiche rien plutôt qu'une quantité fausse, sauf si seuls des trous
+    (NA) en fin de liste expliquent l'écart."""
+    if len(qty) == len(parts):
+        return qty
+    q = list(qty)
+    while len(q) > len(parts) and q and q[-1] is None:
+        q.pop()
+    if len(q) == len(parts):
+        return q
+    return [None] * len(parts)
+
+
+def load_mt_ingredients():
+    """Noms d'ingrédients traduits automatiquement (tools/translate_fr.py), en secours du lexique."""
+    p = ROOT / "tools" / "ingredients_fr_mt.json"
+    return json.loads(p.read_text("utf-8")) if p.exists() else {}
+
+
 # ---------------------------------------------------------------- pipeline
 def build(args):
     t0 = time.time()
@@ -299,7 +324,13 @@ def build(args):
             continue
         if math.isnan(rating) or rating < args.min_rating or reviews < args.min_reviews:
             continue
-        parts_l = [p for p in r_vector(parts) if p]
+        parts_raw = r_vector(parts, keep_na=True)
+        qty_raw = r_vector(qty, keep_na=True)
+        if len(qty_raw) == len(parts_raw):
+            pairs = [(q, p) for q, p in zip(qty_raw, parts_raw) if p]
+            qty_raw, parts_l = [q for q, _ in pairs], [p for _, p in pairs]
+        else:
+            parts_l = [p for p in parts_raw if p]
         steps_l = [s.strip() for s in r_vector(steps) if s and s.strip()]
         if len(parts_l) < 2 or len(steps_l) < 1:
             continue
@@ -308,7 +339,7 @@ def build(args):
         typ = detect_type(cat, name, kw_l)
         if typ == "boisson" and not args.keep_drinks:
             continue
-        rows.append(dict(id=int(rid), name=str(name).strip(), cat=cat, kw=kw_l, qty=r_vector(qty), parts=parts_l,
+        rows.append(dict(id=int(rid), name=str(name).strip(), cat=cat, kw=kw_l, qty=qty_raw, parts=parts_l,
                          rating=rating, reviews=reviews, prep=iso_minutes(prep), cook=iso_minutes(cook),
                          total=iso_minutes(total), imgs=[i for i in r_vector(imgs) if i and i.startswith("http")],
                          steps=steps_l, serv=serv, kcal=kcal, desc=desc, author=author, type=typ))
@@ -339,7 +370,8 @@ def build(args):
         translations = {int(k): v for k, v in json.loads(tpath.read_text("utf-8")).items()}
         print(f"  {len(translations)} traductions françaises fusionnées")
 
-    index, buckets, unknown_ing = [], defaultdict(dict), Counter()
+    mt_ing = load_mt_ingredients()
+    index, buckets, unknown_ing, qty_stats = [], defaultdict(dict), Counter(), Counter()
     for r in kept:
         rid = r["id"]
         lines = nlg.get(rid)
@@ -353,7 +385,8 @@ def build(args):
                 base = match or norm_ing(re.sub(DESCRIPTORS, "", rest)) or rest
                 ings.append(dict(q=q, u=u, n=base, raw=line))
         else:
-            qs = r["qty"] if len(r["qty"]) == len(r["parts"]) else [None] * len(r["parts"])
+            qs = align_qty(r["qty"], r["parts"])
+            qty_stats["aligned" if any(q is not None for q in qs) else "none"] += 1
             for q, p in zip(qs, r["parts"]):
                 ings.append(dict(q=parse_qty(q), u=None, n=p, raw=None))
 
@@ -362,7 +395,7 @@ def build(args):
         out_ing = []
         for i, it in enumerate(ings):
             k = ing_key(it["n"])
-            fr = (tr_ing[i] if i < len(tr_ing) else None) or fr_name(it["n"])
+            fr = (tr_ing[i] if i < len(tr_ing) else None) or fr_name(it["n"]) or mt_ing.get(norm_ing(it["n"]))
             if not fr:
                 unknown_ing[k] += 1
             e = {"n": it["n"], "k": k, "a": aisle_of(it["n"])}
@@ -390,7 +423,7 @@ def build(args):
                "d": difficulty(len(r["steps"]), len(r["parts"]), total, r["kw"]),
                "p": cost(r["parts"], r["kw"]), "eq": equipment(steps_txt), "k": main_keys,
                "s": round(bayes(r["rating"], r["reviews"]), 3)}
-        if tr.get("n"): idx["fr"] = tr["n"]
+        if tr.get("n") and tr["n"].strip().lower() != r["name"].strip().lower(): idx["fr"] = tr["n"]
         if total: idx["tm"] = total
         if cuisine: idx["c"] = cuisine
         if img: idx["img"] = img
@@ -405,6 +438,8 @@ def build(args):
         if isinstance(r["desc"], str) and r["desc"].strip():
             det["desc"] = tr.get("desc") or r["desc"].strip()[:400]
         buckets[rid % BUCKETS][str(rid)] = det
+
+    print(f"  quantités : {qty_stats['aligned']:,} recettes avec quantités, {qty_stats['none']:,} sans")
 
     # --- écriture
     (DATA / "r").mkdir(parents=True, exist_ok=True)
