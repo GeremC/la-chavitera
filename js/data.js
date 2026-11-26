@@ -75,9 +75,15 @@ export function fmtQty(q, u) {
   if (u === 'ml') return q >= 1000 ? (Math.round(q / 100) / 10).toString().replace('.', ',') + ' L' : (q < 10 ? niceNum(q / 5) + ' c. à c.' : roundTo(q, 5) + ' ml');
   if (u === 'cs') return niceNum(q) + ' c. à s.';
   if (u === 'cc') return niceNum(q) + ' c. à c.';
+  if (q >= 4 && (!u || COUNTED.has(u))) q = Math.round(q);      // « 3 oignons », pas « 2 ¾ »
+  else if (q >= 1 && (!u || COUNTED.has(u))) q = Math.round(q * 2) / 2;
   if (u) return niceNum(q) + ' ' + u + (q > 1 && !/s$/.test(u) && !/[éè]e?$/.test(u) ? 's' : '');
   return niceNum(q);
 }
+const COUNTED = new Set(['gousse', 'branche', 'pièce', 'tranche']);
+// nom et note (« émincés ») au singulier quand il n'y a qu'une pièce
+export const ingLabel = (e, q) => (q != null && q <= 1 && !e.u && e.fs) ? e.fs : (e.fr || e.n);
+export const ingNote = (e, q) => (q != null && q <= 1 && e.ns) ? e.ns : (e.nt || '');
 function roundTo(q, s) { return Math.max(s, Math.round(q / s) * s); }
 
 // regroupe des quantités d'unités compatibles
