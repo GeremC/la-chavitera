@@ -240,14 +240,14 @@ function renderMenu() {
     <div class="row mealsrow"><span class="spacer">Repas au menu</span>${stepper('meals', 0, m.items.length)}</div>
     ${m.items.length ? items : `<div class="empty"><div class="ee">${ic('utensils')}</div><h2>Menu vide</h2><p class="muted">On vous propose ${st.meals} recettes selon vos goûts ?</p><button class="btn" data-act="fill">Générer mon menu</button></div>`}
     <button class="addmeal" data-act="go" data-tab="discover"><div class="plate ph">${ic('pot')}</div><span class="spacer">Ajouter une recette</span><span class="round red">${ic('plus')}</span></button>
-    ${m.items.length ? `<div class="menuacts"><button class="pill" data-act="archive" data-m="${m.id}">${ic('archive')} Archiver ce menu</button><button class="pill" data-act="delCur">${ic('trash')} Supprimer</button></div>` : ''}
+    ${m.items.length ? `<div class="pagecta"><button class="btn big" data-act="goShop" data-m="${m.id}">${ic('cart')} Voir la liste de courses</button></div>
+      <div class="menuacts"><button class="pill" data-act="archive" data-m="${m.id}">${ic('archive')} Archiver ce menu</button><button class="pill" data-act="delCur">${ic('trash')} Supprimer</button></div>` : ''}
     ${extras.length ? `<div class="suggest"><h2>On vous suggère aussi…</h2>${extras.map(r => `
       <div class="meal"><button data-act="open" data-id="${r.id}">${plate(r)}</button><div class="info">
         <h3 data-act="open" data-id="${r.id}">${esc(name(r))}</h3>
         <div class="chips"><span class="chip" style="color:var(--ink)">${ic('starFill', 'sm gold')}${r.r.toFixed(1)}</span><span class="chip" style="color:var(--ink)">${ic('clock')} ${minutes(r.tm)}</span></div>
         <div><button class="pill" data-act="add" data-id="${r.id}">Ajouter</button></div></div></div>`).join('')}</div>` : ''}
-    <div style="height:90px"></div>
-    ${m.items.length ? `<div class="sticky-cta"><button class="btn big" data-act="goShop" data-m="${m.id}">${ic('cart')} Voir la liste de courses</button></div>` : ''}`;
+    <div style="height:20px"></div>`;
 }
 
 // onglets des menus en cours : passer de l'un à l'autre, renommer, en créer un nouveau
@@ -468,23 +468,23 @@ async function renderShopList(ms) {
   const ctaEnter = allChecked && !done && !renderShop.ctaShown;
   renderShop.ctaShown = allChecked && !done;
   view.innerHTML = `
-    ${done ? `<div class="banner green"><span class="bi">${ic('checks')}</span><div class="spacer"><b class="plain">Courses faites</b><br><span class="small">Validées le ${fmtDate(done)}. Place à la cuisine !</span></div>
-      <button class="btn small" data-act="goCook" data-m="${mids}">Cuisiner</button></div>
-      <div class="center" style="margin:-4px 0 14px"><button class="linkbtn small muted" data-act="shopReopen" data-m="${mids}">${ic('undo')} Rouvrir la liste</button></div>` : ''}
-    <p class="muted" style="margin:0">${ms.length > 1 ? `${ms.length} listes · ` : ''}${nR} recette${nR > 1 ? 's' : ''} · ${doneN}/${totalN} articles</p>
+    ${done ? `<div class="banner green shopdone"><span class="bi">${ic('checks')}</span><div class="spacer"><b class="plain">Courses faites</b><br><span class="small">Validées le ${shortDate(done)}.</span><br><button class="linkbtn small" data-act="shopReopen" data-m="${mids}">${ic('undo', 'sm')} Rouvrir la liste</button></div>
+      <button class="btn small" data-act="goCook" data-m="${mids}">Cuisiner</button></div>` : ''}
+    <div class="shopsum"><span>${ms.length > 1 ? `${ms.length} listes · ` : ''}${nR} recette${nR > 1 ? 's' : ''}</span><b>${doneN}/${totalN} articles</b></div>
     <div class="progress"><i style="width:${totalN ? Math.round(doneN / totalN * 100) : 0}%"></i></div>
     ${dishesBlock(ms)}
     ${groups.map(([a, l]) => {
       const n = l.filter(isChecked).length, closed = aisleClosed(a, n === l.length);
       return `<div class="aisle fold ${closed ? 'closed' : ''} ${n === l.length ? 'full' : ''}"><button class="ahead" data-act="aisle" data-a="${esc(a)}" data-full="${n === l.length ? 1 : 0}" aria-expanded="${!closed}"><h3>${a}</h3><span class="acount">${n === l.length ? ic('check', 'sm') : ''}${n}/${l.length}</span><span class="chev">${ic(closed ? 'down' : 'up')}</span></button>
-        ${closed ? '' : l.sort((x, y) => x.label.localeCompare(y.label, 'fr')).map(row).join('')}</div>`;
+        ${closed ? '' : l.sort((x, y) => (isChecked(x) - isChecked(y)) || x.label.localeCompare(y.label, 'fr')).map(row).join('')}</div>`;
     }).join('')}
-    <div class="aisle"><h3>Autres articles</h3>
-      ${extras.map(({ id, e, mid }) => `<div class="item ${e.done ? 'done' : ''}"><span class="box" data-act="xcheck" data-m="${mid}" data-id="${id}">${e.done ? ic('check') : ''}</span><div class="it" data-act="xcheck" data-m="${mid}" data-id="${id}">${esc(e.txt)}</div><button class="del" data-act="xdel" data-m="${mid}" data-id="${id}" aria-label="Supprimer">${ic('x')}</button></div>`).join('')}
-      <form id="addx" class="item"><input class="field" id="xtxt" placeholder="Ajouter : lessive, pain, café…" style="padding:9px 12px"><button class="round red" style="width:40px;height:40px;font-size:22px" aria-label="Ajouter">${ic('plus')}</button></form></div>
+    <div class="aisle extras"><div class="ahead"><h3>Autres articles</h3>${extras.length ? `<span class="acount">${extras.filter(x => x.e.done).length}/${extras.length}</span>` : ''}</div>
+      ${extras.sort((a, b) => a.e.done - b.e.done).map(({ id, e, mid }) => `<div class="item ${e.done ? 'done' : ''}"><span class="box" data-act="xcheck" data-m="${mid}" data-id="${id}">${e.done ? ic('check') : ''}</span><div class="it" data-act="xcheck" data-m="${mid}" data-id="${id}">${esc(e.txt)}</div><button class="del" data-act="xdel" data-m="${mid}" data-id="${id}" aria-label="Supprimer">${ic('x')}</button></div>`).join('')}
+      <form id="addx" class="item"><input class="field" id="xtxt" placeholder="Ajouter : lessive, pain, café…" style="padding:9px 12px"><button class="round red sm2" aria-label="Ajouter l'article">${ic('plus')}</button></form></div>
     ${pantry.length ? (() => { const closed = aisleClosed(PANTRY, true);
       return `<div class="aisle fold pantry ${closed ? 'closed' : ''}"><button class="ahead" data-act="aisle" data-a="${PANTRY}" data-full="1" aria-expanded="${!closed}"><h3>Placard : à vérifier</h3><span class="acount">${pantry.length}</span><span class="chev">${ic(closed ? 'down' : 'up')}</span></button>
         ${closed ? '' : pantry.sort((x, y) => x.label.localeCompare(y.label, 'fr')).map(row).join('')}</div>`; })() : ''}
+    ${!done && !allChecked ? `<div class="pagecta"><button class="btn big ghost" data-act="shopDone" data-m="${mids}">${ic('checks')} Valider les courses</button><p class="muted small center">Possible même s'il reste des articles non cochés.</p></div>` : ''}
     <p class="muted small center">Les quantités tiennent compte du nombre de personnes de chaque recette.</p>
     ${allChecked && !done ? `<div style="height:80px"></div><div class="sticky-cta ${ctaEnter ? 'enter' : ''}"><button class="btn big green" data-act="shopDone" data-m="${mids}">${ic('checks')} Tout valider</button></div>` : ''}`;
   $('#addx').addEventListener('submit', e => {
