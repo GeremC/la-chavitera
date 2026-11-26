@@ -7,8 +7,8 @@ const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // ------------------------------------------------------------ grandes parties
-const NOTE_RE = /^(?:cook'?s? ?)?(?:notes?|hints?|tips?|astuces?|remarques?|variations?|variantes?|options?|caution|attention|important|this is important|historical note|serving suggestions?|suggestions?|to serve|to freeze|freezing(?: tips)?|pour congeler|conseils?|please note|yet another note|do not|don'?t|ne pas|optional|facultatif|make ahead|ahead|oamc|nutrition\w*|side dish ideas|my favou?rite)\b/i;
-const LEAD_RE = /^(?:for (?:the )?|to make (?:the )?|to prepare (?:the )?|make (?:the )?|pour (?:la |le |les |l['’])|préparation (?:de la |du |des |de l['’])|preparation of (?:the )?)/i;
+const NOTE_RE = /^(?:cook'?s? ?)?(?:notes?|hints?|tips?|astuces?|remarques?|variations?|variantes?|options?|caution|attention|important|this is important|historical note|serving suggestions?|suggestions?|to serve|to freeze|freezing(?: tips)?|pour congeler|pour geler|pour réchauffer|congélation|nota|optionnel|conseils?|please note|yet another note|do not|don'?t|ne pas|optional|facultatif|make ahead|ahead|oamc|nutrition\w*|side dish ideas|my favou?rite)\b/i;
+const LEAD_RE = /^(?:pour faire (?:de la |du |des |la |le |les |l['’])?|for (?:the )?|to make (?:the )?|to prepare (?:the )?|make (?:the )?|pour (?:la |le |les |l['’])|préparation (?:de la |du |des |de l['’])|preparation of (?:the )?)/i;
 const words = s => s.trim().split(/\s+/).length;
 const isCaps = s => /[A-Z]/.test(s) && s === s.toUpperCase();
 
