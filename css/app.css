@@ -440,3 +440,44 @@ html[data-dir=back]::view-transition-new(view){animation-name:vtInBack}
   .card .chip{background:var(--cream2)}
   img.plate{filter:brightness(.92)}
 }
+
+/* ---- plusieurs listes de courses / menus en cours */
+.fchips.menus{margin:0 0 10px}
+.fchips.menus .fchip .n{background:var(--cream2);color:var(--muted);border-radius:999px;font-size:12px;padding:0 6px;min-width:18px;text-align:center;line-height:18px}
+.fchips.menus .fchip.on .n{background:color-mix(in srgb,var(--on-ink) 22%,transparent);color:inherit}
+.fchip.add{color:var(--red);border-style:dashed}
+.lcard{position:relative;display:flex;gap:10px;align-items:flex-start;background:var(--white);border-radius:var(--r);padding:14px 12px;margin-bottom:12px;box-shadow:var(--shadow);border:2px solid transparent;transition:border-color .15s}
+.lcard.on{border-color:var(--ink)}
+.lcard .lsel{padding:2px;line-height:0;flex:none}
+.lcard .box{width:26px;height:26px;border-radius:8px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:17px}
+.lcard .box .i{stroke-width:3}
+.lcard.on .box{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+.lcard .lbody{flex:1;min-width:0;cursor:pointer}
+.lcard .lhead{display:flex;align-items:center;gap:8px;padding-right:34px}
+.lcard h3{font-family:var(--body);font-weight:600;font-size:17px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lcard .lpct{font-weight:600;color:var(--green);font-size:14px;flex:none}
+.lcard .lok{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--green);background:var(--green-soft);border-radius:999px;padding:2px 9px;flex:none}
+.lcard .progress{margin:8px 0 10px;height:8px}
+.lcard .thumbs{display:flex}
+.lcard .thumbs img,.lcard .thumbs .ph,.lcard .thumbs .more{width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid var(--white);margin-left:-10px;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:18px;flex:none}
+.lcard .thumbs > :first-child{margin-left:0}
+.lcard .thumbs .more{font-size:13px;font-weight:600;color:var(--muted)}
+.lcard.fin .thumbs{opacity:.7}
+.lcard .ledit{position:absolute;top:8px;right:8px;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:17px;line-height:0}
+.lcard .ledit:active{background:var(--cream2);color:var(--red)}
+.selbar{display:flex;gap:10px;align-items:center}
+.selbar > *{pointer-events:auto}
+.selbar .btn{flex:1}
+.selbar .pill,.selbar .round{box-shadow:var(--shadow);flex:none}
+.dishes .dishmenu{font-size:13px;font-weight:600;color:var(--muted);margin:10px 0 6px}
+.dishrow{display:flex;flex-wrap:wrap;gap:8px;padding:4px 0 6px}
+.dish{display:inline-flex;align-items:center;gap:4px;background:var(--white);border:1.5px solid var(--line);border-radius:999px;padding:3px 3px 3px 3px;font-size:14px;max-width:100%}
+.dish .dhit{display:inline-flex;align-items:center;gap:7px;min-width:0;cursor:pointer}
+.dish img,.dish .ph{width:28px;height:28px;border-radius:50%;object-fit:cover;flex:none;background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:14px}
+.dish .dn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(52vw,220px)}
+.dish button{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--muted);line-height:0;flex:none}
+.dish button:active{background:var(--cream2);color:var(--red)}
+.dish.add{padding:6px 12px;color:var(--red);border-style:dashed;gap:5px}
+.menuhead{display:flex;align-items:center;gap:8px;margin:24px 2px 10px}
+.menuhead h2{font-size:22px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.section-title.small{font-size:17px;margin:14px 2px 10px;color:var(--muted)}
