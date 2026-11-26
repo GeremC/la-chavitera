@@ -82,6 +82,8 @@ export function fmtQty(q, u) {
 }
 const COUNTED = new Set(['gousse', 'branche', 'pièce', 'tranche']);
 // nom et note (« émincés ») au singulier quand il n'y a qu'une pièce
+// quantité pour f personnes ; un œuf ne se coupe pas (au moins 1, nombre entier)
+export const qtyFor = (e, f) => e.q == null ? null : e.w ? Math.max(1, Math.round(e.q * f)) : e.q * f;
 export const ingLabel = (e, q) => (q != null && q <= 1 && !e.u && e.fs) ? e.fs : (e.fr || e.n);
 export const ingNote = (e, q) => (q != null && q <= 1 && e.ns) ? e.ns : (e.nt || '');
 function roundTo(q, s) { return Math.max(s, Math.round(q / s) * s); }

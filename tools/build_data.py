@@ -420,7 +420,7 @@ def build(args):
         total = r["total"] or ((r["prep"] or 0) + (r["cook"] or 0)) or None
         cuisine = detect_cuisine(r["cat"], r["name"], r["kw"])
         img = r["imgs"][0] if r["imgs"] else None
-        main_keys = [e["k"] for e in out_ing if not e.get("p")][:10]
+        main_keys = [e["k"] for e in out_ing if not e.get("p") and not e.get("h")][:10]
         idx = {"id": rid, "n": r["name"], "t": r["type"], "r": round(r["rating"], 2), "rc": r["reviews"],
                "d": difficulty(len(r["steps"]), len(r["parts"]), total, r["kw"]),
                "p": cost(r["parts"], r["kw"]), "eq": equipment(steps_txt), "k": main_keys,
@@ -447,7 +447,7 @@ def build(args):
     (DATA / "r").mkdir(parents=True, exist_ok=True)
     for old in (DATA / "r").glob("*.json"):
         old.unlink()
-    version = hashlib.md5(json.dumps([i["id"] for i in index]).encode() + str(len(translations)).encode() + b"units-v2").hexdigest()[:10]
+    version = hashlib.md5(json.dumps([i["id"] for i in index]).encode() + str(len(translations)).encode() + b"units-v3").hexdigest()[:10]
     meta = {"v": version, "count": len(index), "buckets": BUCKETS,
             "cuisines": sorted({i["c"] for i in index if "c" in i}), "types": TYPE_FR,
             "source": "Food.com (Kaggle : Food.com - Recipes and Reviews)", "built": time.strftime("%Y-%m-%d")}

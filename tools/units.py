@@ -297,6 +297,9 @@ def _fam(u):
 def merge_dupes(ings):
     out, seen = [], {}
     for e in ings:
+        if e.get("h"):
+            out.append(e)
+            continue
         key = merge_key(e.get("k") or e.get("n"))
         prev = seen.get(key)
         if prev is None:
@@ -329,19 +332,69 @@ def merge_dupes(ings):
     return out
 
 
+# ---------------------------------------------------------------- titres de section
+# « Meatballs », « Sauce: », « FOR THE FILLING » sont des titres, pas des ingrédients
+SECTION_WORDS = r"(?:toppings?|fillings?|sauce|dressing|cake|glaze|garnish(?:es)?|frosting|marinade|crust|icing|" \
+                r"salad|dough|batter|meatballs?|dumplings?|syrup|streusel|crumb topping|optional|muffins|cookies|" \
+                r"coating|rolls|scones|bottom layer|top layer|base|assembly|layer|pastry|brine|rub|spice rub|" \
+                r"crumble|meringue|ganache|cheesecake|pie|biscuits|bread|vinaigrette|stuffing|broth|soup|" \
+                r"to serve|for serving|garnish \(optional\)|sauce \(optional\))"
+
+
+def is_section(e):
+    raw = (e.get("raw") or "").strip()
+    if e.get("q") is not None or not raw or re.search(r"\d|\(", raw) or len(raw.split()) > 6:
+        return False
+    low = raw.lower().rstrip(":").strip()
+    if raw.endswith(":") or re.match(r"^(?:for\s|to (?:serve|decorate|finish|garnish|assemble)\b)", low) and not re.match(r"^for (?:frying|greasing|dusting|brushing|serving)", low):
+        return True
+    if raw.isupper() and len(raw) > 3 and not re.search(r"\b(?:salt|pepper|oil|water|spray)\b", low):
+        return True
+    words = raw.rstrip(":").split()
+    if len(words) == 1:  # « Sauce », « streusel »
+        return bool(re.fullmatch(SECTION_WORDS + "|optional", low))
+    # « Lemon Glaze », « Cream Cheese Frosting » (titre en majuscules à chaque mot)
+    titled = all(w[:1].isupper() or w.lower() in ("and", "or", "of", "for", "the", "with", "&", "de") for w in words)
+    return titled and bool(re.fullmatch(rf"(?:[a-z'&-]+\s+){{1,4}}{SECTION_WORDS}", low))
+
+
+EGG = re.compile(r"\beggs?\b(?:\s+(?:yolks?|whites?))?$|\begg (?:yolks?|whites?)$")
+
+
 def fix_ingredients(ings, has_units=True):
-    """Point d'entrée : unités pour les fruits/légumes, puis fusion des doublons."""
+    """Point d'entrée : titres de section, unités pour les fruits/légumes, puis fusion des doublons."""
+    for e in ings:
+        if is_section(e):
+            e["h"] = 1
+            e.pop("p", None)
+            fr = (e.get("fr") or e.get("n") or "").strip().rstrip(":").strip()
+            e["fr"] = fr[:1].upper() + fr[1:].lower() if fr.isupper() else fr
+        elif not e.get("u") and EGG.search(e.get("k") or "") and "substitute" not in (e.get("k") or ""):
+            e["w"] = 1  # un œuf ne se coupe pas : quantité entière
+            if e.get("fr"):
+                pl, sg = _fr_number(e["fr"], True), _fr_number(e["fr"], False)
+                e["fr"] = pl
+                if sg != pl:
+                    e["fs"] = sg
     counted = []
     if has_units:
         for e in ings:
-            if to_units(e):
+            if not e.get("h") and to_units(e):
                 counted.append(e)
     ings = merge_dupes(ings)
     for e in counted:
         if e in ings:
             finish_count(e)
         e.pop("_fem", None)
-    return ings
+    # un titre suivi d'aucun ingrédient (ou d'un autre titre) ne sert à rien
+    out = []
+    for i, e in enumerate(ings):
+        if e.get("h"):
+            nxt = next((x for x in ings[i + 1:] if x.get("h") or not x.get("p")), None)
+            if nxt is None or nxt.get("h"):
+                continue
+        out.append(e)
+    return out
 
 
 # ---------------------------------------------------------------- unités dans le texte des étapes
