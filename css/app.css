@@ -8,13 +8,13 @@
   --r:22px; --shadow:0 2px 10px rgba(80,40,10,.07);
   color-scheme:light dark;
   --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
-  --head:'Fredoka',system-ui,sans-serif; --body:'Outfit',system-ui,sans-serif;
+  --head:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif; --body:var(--head);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--cream);color:var(--ink);font-family:var(--body);font-size:16px;overscroll-behavior-y:none}
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
 input,select,textarea{font:inherit;color:inherit}
-h1,h2,h3{font-family:var(--head);font-weight:600;margin:0;letter-spacing:-.01em}
+h1,h2,h3{font-family:var(--head);font-weight:700;margin:0;letter-spacing:-.02em}
 img{display:block}
 /* icônes SVG (js/icons.js) : taille = taille de police, couleur = couleur du texte */
 .i{width:1em;height:1em;flex:none;display:inline-block;vertical-align:-.15em;overflow:visible}
@@ -378,6 +378,7 @@ body:has(#timers:not([hidden])) .sheet .inner{padding-bottom:calc(190px + var(--
 .cookcard h3{padding-right:28px}
 .cookcard .cdel{position:absolute;top:8px;right:8px;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:17px;line-height:0}
 .cookcard .cdel:active{background:var(--cream2);color:var(--red)}
+.toast[hidden]{display:none!important}
 .toast.withact{display:flex;white-space:nowrap;align-items:center;gap:14px;padding:8px 8px 8px 20px}
 .toast .tact{background:var(--red);color:#fff;border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px}
 .delbar{text-align:center;margin:6px 0 12px}
@@ -511,3 +512,38 @@ html[data-dir=back]::view-transition-new(view){animation-name:vtInBack}
 .aisle.fold.closed.full .ahead h3{color:var(--muted)}
 .aisle.fold.closed .ahead h3{padding:10px 0}
 .item .from .sep{margin:0 4px}
+
+/* ---- passe de cohérence : actions de menu, confirmations, fermetures */
+.mealsrow{margin:18px 2px 4px;font-family:var(--head);font-weight:500;font-size:18px}
+.addmeal{width:100%;text-align:left;font-size:18px;font-family:var(--body);transition:transform .1s,background-color .2s}
+.addmeal:active{transform:scale(.98);background:var(--white)}
+.menuacts{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:16px}
+.menuacts .pill{color:var(--muted)}
+.menuacts .pill .i{color:var(--ink)}
+.mbtns{display:flex;gap:10px;margin-top:18px}
+.mbtns .btn{flex:1}
+.modal.ask .field,.modal-bg.ask .field{margin-top:4px}
+.modal-bg.ask .modal p{margin:0 0 4px;line-height:1.45}
+.btn.danger{background:var(--darkred)}
+.modal-bg{animation:fadein .2s ease-out}
+.modal-bg.closing{animation:fadeout .18s ease-in forwards}
+.modal-bg.closing .modal{animation:down .18s cubic-bezier(.4,0,1,1) forwards}
+@keyframes fadein{from{opacity:0}}
+@keyframes fadeout{to{opacity:0}}
+.ctasub{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:6px;font-size:13px;color:var(--muted);pointer-events:auto}
+.sheet .sticky-cta:not(.inpage) .ctasub{background:var(--white);border-radius:999px;padding:4px 12px;width:max-content;margin:6px auto 0;box-shadow:var(--shadow)}
+.aisle.fold.pantry .acount{background:var(--cream2);border-radius:999px;padding:0 8px;line-height:20px}
+/* bouton principal en bas de page (pas flottant) */
+.pagecta{margin:18px 0 0}
+.pagecta .btn{box-shadow:0 6px 18px color-mix(in srgb,var(--red) 30%,transparent)}
+.pagecta .btn.ghost{box-shadow:var(--shadow);color:var(--green);border-color:var(--green)}
+.pagecta p{margin:8px 0 0}
+/* courses */
+.shopsum{display:flex;justify-content:space-between;align-items:baseline;color:var(--muted);margin:0 2px}
+.shopsum b{color:var(--ink);font-weight:600}
+.banner.shopdone{margin:0 0 14px}
+.banner.shopdone .linkbtn{padding:4px 0 0;color:var(--green);font-weight:500}
+.aisle.extras .ahead{display:flex;align-items:center;gap:8px}
+.aisle.extras .ahead h3{flex:1}
+.aisle.extras .acount{font-size:13px;font-weight:600;color:var(--muted)}
+.round.red.sm2{width:40px;height:40px;font-size:22px;flex:none}

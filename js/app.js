@@ -36,6 +36,7 @@ function toast(msg, action) {
   clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, action ? 3000 : 2200);
 }
 function modal(html) {
+  $('#toast').hidden = true; // pas de bandeau par-dessus la fenêtre
   const bg = document.createElement('div'); bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal">${html}</div>`;
   bg.addEventListener('click', e => { if (e.target === bg) closeModalEl(bg); });
@@ -45,7 +46,24 @@ function modal(html) {
   return bg;
 }
 function closeModalEl(bg) {
-  if (navState().modal) history.back(); else bg?.remove();
+  if (navState().modal) history.back(); else dropModal(bg);
+}
+// la fenêtre glisse vers le bas avant de disparaître (même mouvement que la fiche recette)
+function dropModal(bg) {
+  if (!bg || bg.classList.contains('closing')) return;
+  if (reduceMotion()) return bg.remove();
+  bg.classList.add('closing'); setTimeout(() => bg.remove(), 180);
+}
+// confirmation dans le style de l'app, à la place des fenêtres grises du navigateur.
+// onOk est appelé une fois la fenêtre refermée (après le retour d'historique), avec la saisie s'il y en a une.
+let askOk = null, afterPop = null;
+function ask({ title, text = '', ok, danger = false, input = null, onOk }) {
+  const bg = modal(`<h2>${esc(title)}</h2>${text ? `<p class="muted">${esc(text)}</p>` : ''}
+    ${input ? `<input class="field" id="askIn" value="${esc(input.value || '')}" placeholder="${esc(input.ph || '')}" maxlength="40" autocomplete="off" enterkeyhint="done">` : ''}
+    <div class="mbtns"><button class="btn ghost" data-act="closeModal">Annuler</button><button class="btn${danger ? ' danger' : ''}" data-act="askOk">${esc(ok)}</button></div>`);
+  bg.classList.add('ask'); askOk = onOk;
+  const inp = bg.querySelector('#askIn');
+  if (inp) { inp.focus(); inp.select(); inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); bg.querySelector('[data-act=askOk]').click(); } }); }
 }
 
 // ------------------------------------------------------------ historique (bouton / geste retour)
@@ -121,7 +139,7 @@ function startNewMenu() {
   if (!cur.items.length && !getMenu(cur.id)) return cur; // déjà sur un menu vide
   draft = newMenu(); setCur(draft.id); return draft;
 }
-let undoMenus = [], dishUndo = null;
+let undoMenus = [], dishUndo = null, undoHist = null;
 function deleteMenus(ids) {
   undoMenus = ids.map(getMenu).filter(Boolean);
   if (!undoMenus.length) return;
@@ -132,7 +150,12 @@ function addToMenu(id, ppl) {
   const m = menu(); if (m.items.some(i => i.id === id)) return;
   m.items.unshift({ id, ppl: ppl || R.settings().people }); saveMenu(m); toast('Ajouté en haut du menu'); // le dernier ajouté en premier
 }
-function removeFromMenu(id) { const m = menu(); m.items = m.items.filter(i => i.id !== id); saveMenu(m); }
+function removeFromMenu(id, m = menu()) {
+  const idx = m.items.findIndex(i => i.id === id); if (idx < 0) return;
+  dishUndo = { mid: m.id, idx, it: m.items[idx] };
+  m.items = m.items.filter(i => i.id !== id); saveMenu(m);
+  toast('Recette retirée du menu', { label: 'Annuler', act: 'dishUndo', id: '' });
+}
 function replaceInMenu(id) {
   const m = menu(), old = DB.byId.get(id);
   const ex = new Set(m.items.map(i => i.id)); ex.add(id);
@@ -158,7 +181,7 @@ function archiveWeek(mid) {
   S.set('hist:' + m.id, { id: m.id, date: Date.now(), created: m.created, items: m.items, ...(m.name ? { name: m.name } : {}) });
   S.del('amenu:' + m.id);
   S.set('skipped', []);
-  askRatings(m.items.map(i => i.id), 'Comment était la semaine ?');
+  askRatings(m.items.map(i => i.id), 'Comment était ce menu ?');
   // s'il reste d'autres menus en cours on y bascule, sinon on en prépare un nouveau
   if (!menus().length) { draft = newMenu(); setCur(draft.id); fillMenu(); }
 }
@@ -190,7 +213,7 @@ function settingsBar(st) {
 // ------------------------------------------------------------ vue Menu
 function renderMenu() {
   const st = R.settings(), m = menu(), prof = R.tasteProfile();
-  setTitle('Choisir les menus', `<button class="ib" data-act="shareMenu" aria-label="Partager">${ic('share')}</button>`);
+  setTitle('Choisir', `<button class="ib" data-act="shareMenu" aria-label="Partager">${ic('share')}</button>`);
   const old = m.items.length && Date.now() - m.created > 6 * 86400000;
   const items = m.items.map(it => {
     const r = DB.byId.get(it.id); if (!r) return '';
@@ -213,20 +236,18 @@ function renderMenu() {
     <div class="searchrow"><button class="search fake" data-act="openSearch">${ic('search')}<span>Rechercher une recette…</span></button>
       <button class="favbtn" data-act="openFavs" aria-label="Recettes favorites${nFav ? ` (${nFav})` : ''}">${ic('heartFill')}</button></div>
     ${settingsBar(st)}
-    ${old ? `<div class="banner yellow"><span class="be">${ic('calendar')}</span><div class="spacer"><b style="background:none;color:inherit;padding:0">Nouvelle semaine ?</b><br><span class="small">Archivez ce menu pour le retrouver dans les archives.</span></div><button class="btn small" data-act="archive">Archiver</button></div>` : ''}
-    <div class="row" style="margin:20px 0 4px">${stepper('meals', 0, m.items.length)} <span style="font-size:20px">repas</span><span class="spacer"></span>
-      <button class="btn" data-act="go" data-tab="discover">${ic('plus')} Ajouter</button></div>
+    ${old ? `<div class="banner yellow"><span class="be">${ic('calendar')}</span><div class="spacer"><b style="background:none;color:inherit;padding:0">Nouvelle semaine ?</b><br><span class="small">Archivez ce menu pour le retrouver dans les Archives.</span></div><button class="btn small" data-act="archive" data-m="${m.id}">Archiver</button></div>` : ''}
+    <div class="row mealsrow"><span class="spacer">Repas au menu</span>${stepper('meals', 0, m.items.length)}</div>
     ${m.items.length ? items : `<div class="empty"><div class="ee">${ic('utensils')}</div><h2>Menu vide</h2><p class="muted">On vous propose ${st.meals} recettes selon vos goûts ?</p><button class="btn" data-act="fill">Générer mon menu</button></div>`}
-    <div class="addmeal" data-act="go" data-tab="discover"><div class="plate ph">${ic('pot')}</div><span class="spacer" style="font-size:18px">Ajouter un autre repas</span><span class="round red">${ic('plus')}</span></div>
-    ${m.items.length ? `<div class="center" style="margin-top:14px"><button class="pill" data-act="archive">${ic('check')} Semaine terminée : archiver et noter</button></div>` : ''}
-    ${getMenu(m.id) && menus().length > 1 ? `<div class="center" style="margin-top:10px"><button class="linkbtn small muted" data-act="delCur">${ic('trash', 'sm')} Supprimer ce menu</button></div>` : ''}
+    <button class="addmeal" data-act="go" data-tab="discover"><div class="plate ph">${ic('pot')}</div><span class="spacer">Ajouter une recette</span><span class="round red">${ic('plus')}</span></button>
+    ${m.items.length ? `<div class="pagecta"><button class="btn big" data-act="goShop" data-m="${m.id}">${ic('cart')} Voir la liste de courses</button></div>
+      <div class="menuacts"><button class="pill" data-act="archive" data-m="${m.id}">${ic('archive')} Archiver ce menu</button><button class="pill" data-act="delCur">${ic('trash')} Supprimer</button></div>` : ''}
     ${extras.length ? `<div class="suggest"><h2>On vous suggère aussi…</h2>${extras.map(r => `
       <div class="meal"><button data-act="open" data-id="${r.id}">${plate(r)}</button><div class="info">
         <h3 data-act="open" data-id="${r.id}">${esc(name(r))}</h3>
         <div class="chips"><span class="chip" style="color:var(--ink)">${ic('starFill', 'sm gold')}${r.r.toFixed(1)}</span><span class="chip" style="color:var(--ink)">${ic('clock')} ${minutes(r.tm)}</span></div>
         <div><button class="pill" data-act="add" data-id="${r.id}">Ajouter</button></div></div></div>`).join('')}</div>` : ''}
-    <div style="height:90px"></div>
-    ${m.items.length ? `<div class="sticky-cta"><button class="btn big" data-act="goShop" data-m="${m.id}">${activeMenus().length > 1 ? 'Voir sa liste de courses' : 'Créer ma liste de courses'}</button></div>` : ''}`;
+    <div style="height:20px"></div>`;
 }
 
 // onglets des menus en cours : passer de l'un à l'autre, renommer, en créer un nouveau
@@ -321,13 +342,13 @@ function lcard(m, st, t) {
   return `<div class="lcard ${on ? 'on' : ''} ${st.finished ? 'fin' : ''}">
     <button class="lsel" data-act="lsel" data-t="${t}" data-m="${m.id}" aria-label="Sélectionner" aria-pressed="${on}"><span class="box">${on ? ic('check') : ''}</span></button>
     <div class="lbody" data-act="lopen" data-t="${t}" data-m="${m.id}">
-      <div class="lhead">${badge(m)}<h3>${esc(menuName(m))}</h3>${st.finished ? `<span class="lok">${ic('check', 'sm')} ${t === 'shop' ? 'Faites' : 'Bouclé'}</span>` : `<span class="lpct">${pct} %</span>`}</div>
+      <div class="lhead">${badge(m)}<h3>${esc(menuName(m))}</h3>${st.finished ? `<span class="lok">${ic('check', 'sm')} ${t === 'shop' ? 'Faites' : 'Terminé'}</span>` : `<span class="lpct">${pct} %</span>`}</div>
       <span class="muted small">${rs.length} recette${rs.length > 1 ? 's' : ''} · ${st.done}/${st.total} ${t === 'shop' ? 'articles' : 'repas cuisinés'}</span>
       <div class="progress"><i style="width:${pct}%"></i></div>
       <div class="thumbs">${rs.slice(0, 6).map(miniPlate).join('')}${rs.length > 6 ? `<span class="more">+${rs.length - 6}</span>` : ''}</div>
       <div class="lnames">${rs.map(r => esc(name(r))).join(' · ')}</div>
     </div>
-    <button class="ledit" data-act="ledit" data-m="${m.id}" aria-label="Modifier les plats">${ic('pencil')}</button>
+    <button class="ledit" data-act="ledit" data-m="${m.id}" aria-label="Modifier le menu">${ic('pencil')}</button>
   </div>`;
 }
 function selBar(t) {
@@ -345,7 +366,7 @@ function overview(t, act, stats, intro) {
   const allOn = act.every(m => picked[t].has(m.id));
   view.innerHTML = `
     <div class="row" style="margin:0 2px 12px;align-items:flex-start"><p class="muted small spacer" style="margin:0">${intro}</p>
-      <button class="linkbtn small" data-act="lall" data-t="${t}">${allOn ? 'Aucune' : 'Tout cocher'}</button></div>
+      <button class="linkbtn small" data-act="lall" data-t="${t}">${allOn ? 'Tout décocher' : 'Tout cocher'}</button></div>
     ${act.map((m, i) => lcard(m, stats[i], t)).join('')}
     <div class="center" style="margin-top:6px"><button class="pill" data-act="newMenu">${ic('plus')} Nouveau menu</button></div>
     <div style="height:90px"></div>
@@ -355,7 +376,7 @@ function overview(t, act, stats, intro) {
 function listTitle(t, ms, single, actions = '') {
   const multi = activeMenus().length > 1;
   const back = multi ? `<button class="back" data-act="lback" data-t="${t}" aria-label="Toutes les listes">${ic('back')}</button>` : '';
-  setTitle(back + (ms.length > 1 ? `${ms.length} ${t === 'shop' ? 'listes' : 'menus'} <span class="sub">ensemble</span>` : multi ? esc(menuName(ms[0])) : single), actions);
+  setTitle(back + (ms.length > 1 ? `${ms.length} ${t === 'shop' ? 'listes' : 'menus'} <span class="sub">ensemble</span>` : multi ? esc(menuName(ms[0])) : `${single} <span class="sub">${esc(menuName(ms[0]))}</span>`), actions);
 }
 
 // ------------------------------------------------------------ vue Courses
@@ -392,23 +413,23 @@ const AISLE_ORDER = ['Fruits & légumes', 'Viandes & poissons', 'Crèmerie & œu
 async function renderShop() {
   const act = activeMenus();
   if (!act.length) {
-    setTitle('Liste de courses');
-    view.innerHTML = `<div class="empty"><div class="ee">${ic('cart')}</div><h2>Pas encore de liste</h2><p class="muted">Choisissez des recettes : la liste se remplit toute seule.</p><button class="btn" data-act="go" data-tab="menu">Voir mon menu</button></div>`;
+    setTitle('Courses');
+    view.innerHTML = `<div class="empty"><div class="ee">${ic('cart')}</div><h2>Pas encore de liste</h2><p class="muted">Choisissez des recettes : la liste de courses se remplit toute seule.</p><button class="btn" data-act="go" data-tab="menu">Choisir des recettes</button></div>`;
     return;
   }
   const ms = shown('shop');
   if (ms) return renderShopList(ms);
-  setTitle(`Listes de courses <span class="sub">${act.length} en cours</span>`);
+  setTitle(`Courses <span class="sub">${act.length} listes en cours</span>`);
   const stats = await Promise.all(act.map(async m => shopStats(m, await shoppingList([m]))));
   if (tab !== 'shop' || shown('shop')) return;
   overview('shop', act, stats, 'Touchez une liste pour l\'ouvrir, ou cochez-en plusieurs pour faire toutes les courses en une fois.');
 }
 // plats d'une liste : on en retire ou on en ajoute, les ingrédients suivent
 function dishesBlock(ms) {
-  return `<div class="aisle dishes"><h3>Plats</h3>${ms.map(m => `
+  return `<div class="aisle dishes"><h3>Recettes</h3>${ms.map(m => `
     ${ms.length > 1 ? `<div class="dishmenu">${badge(m)}${esc(menuName(m))}</div>` : ''}
     <div class="dishrow">${m.items.map(it => { const r = DB.byId.get(it.id); return r ? `<span class="dish"><span class="dhit" data-act="open" data-id="${r.id}" data-ppl="${it.ppl}">${miniPlate(r)}${ms.length > 1 ? badge(m) : ''}<span class="dn">${esc(name(r))}</span></span><button data-act="dishDel" data-m="${m.id}" data-id="${r.id}" aria-label="Retirer ${esc(name(r))}">${ic('x', 'sm')}</button></span>` : ''; }).join('')}
-      <button class="dish add" data-act="dishAdd" data-m="${m.id}">${ic('plus', 'sm')} Ajouter un plat</button></div>`).join('')}</div>`;
+      <button class="dish add" data-act="dishAdd" data-m="${m.id}">${ic('plus', 'sm')} Ajouter une recette</button></div>`).join('')}</div>`;
 }
 // recettes d'où vient un article ; avec plusieurs listes ensemble, chacune porte la pastille de son menu
 function fromHtml(i, withBadge) {
@@ -417,7 +438,7 @@ function fromHtml(i, withBadge) {
 }
 // rayons repliables : un rayon fini se replie tout seul ; un choix à la main tient tant que le rayon
 // ne change pas d'état (fini / pas fini)
-const aisleFold = new Map();
+const aisleFold = new Map(), PANTRY = 'Placard';
 function aisleClosed(a, full) {
   const f = aisleFold.get(a);
   if (f && f.full === full) return f.closed;
@@ -426,7 +447,7 @@ function aisleClosed(a, full) {
 async function renderShopList(ms) {
   const ids = ms.map(m => m.id), mids = ids.join(',');
   const nR = ms.reduce((s, m) => s + m.items.length, 0);
-  listTitle('shop', ms, 'Liste de courses', `<button class="ib" data-act="shareList" aria-label="Partager">${ic('share')}</button>`);
+  listTitle('shop', ms, 'Courses', `<button class="ib" data-act="shareList" aria-label="Partager">${ic('share')}</button>`);
   const cacheKey = JSON.stringify(ms.map(m => [m.id, m.items]));
   if (!renderShop.cache || renderShop.cacheKey !== cacheKey) view.innerHTML = '<div class="loader"></div>';
   const items = await shoppingList(ms);
@@ -447,21 +468,23 @@ async function renderShopList(ms) {
   const ctaEnter = allChecked && !done && !renderShop.ctaShown;
   renderShop.ctaShown = allChecked && !done;
   view.innerHTML = `
-    ${done ? `<div class="banner green"><span class="bi">${ic('checks')}</span><div class="spacer"><b class="plain">Courses faites</b><br><span class="small">Validées le ${fmtDate(done)}. Place à la cuisine !</span></div>
-      <button class="btn small" data-act="goCook" data-m="${mids}">Cuisiner</button></div>
-      <div class="center" style="margin:-4px 0 14px"><button class="linkbtn small muted" data-act="shopReopen" data-m="${mids}">${ic('undo')} Rouvrir la liste</button></div>` : ''}
-    <p class="muted" style="margin:0">${ms.length > 1 ? `${ms.length} listes · ` : ''}${nR} recette${nR > 1 ? 's' : ''} · ${doneN}/${totalN} articles</p>
+    ${done ? `<div class="banner green shopdone"><span class="bi">${ic('checks')}</span><div class="spacer"><b class="plain">Courses faites</b><br><span class="small">Validées le ${shortDate(done)}.</span><br><button class="linkbtn small" data-act="shopReopen" data-m="${mids}">${ic('undo', 'sm')} Rouvrir la liste</button></div>
+      <button class="btn small" data-act="goCook" data-m="${mids}">Cuisiner</button></div>` : ''}
+    <div class="shopsum"><span>${ms.length > 1 ? `${ms.length} listes · ` : ''}${nR} recette${nR > 1 ? 's' : ''}</span><b>${doneN}/${totalN} articles</b></div>
     <div class="progress"><i style="width:${totalN ? Math.round(doneN / totalN * 100) : 0}%"></i></div>
     ${dishesBlock(ms)}
     ${groups.map(([a, l]) => {
       const n = l.filter(isChecked).length, closed = aisleClosed(a, n === l.length);
       return `<div class="aisle fold ${closed ? 'closed' : ''} ${n === l.length ? 'full' : ''}"><button class="ahead" data-act="aisle" data-a="${esc(a)}" data-full="${n === l.length ? 1 : 0}" aria-expanded="${!closed}"><h3>${a}</h3><span class="acount">${n === l.length ? ic('check', 'sm') : ''}${n}/${l.length}</span><span class="chev">${ic(closed ? 'down' : 'up')}</span></button>
-        ${closed ? '' : l.sort((x, y) => x.label.localeCompare(y.label, 'fr')).map(row).join('')}</div>`;
+        ${closed ? '' : l.sort((x, y) => (isChecked(x) - isChecked(y)) || x.label.localeCompare(y.label, 'fr')).map(row).join('')}</div>`;
     }).join('')}
-    <div class="aisle"><h3>Autres articles</h3>
-      ${extras.map(({ id, e, mid }) => `<div class="item ${e.done ? 'done' : ''}"><span class="box" data-act="xcheck" data-m="${mid}" data-id="${id}">${e.done ? ic('check') : ''}</span><div class="it" data-act="xcheck" data-m="${mid}" data-id="${id}">${esc(e.txt)}</div><button class="del" data-act="xdel" data-m="${mid}" data-id="${id}" aria-label="Supprimer">${ic('x')}</button></div>`).join('')}
-      <form id="addx" class="item"><input class="field" id="xtxt" placeholder="Ajouter : lessive, pain, café…" style="padding:9px 12px"><button class="round red" style="width:40px;height:40px;font-size:22px" aria-label="Ajouter">${ic('plus')}</button></form></div>
-    ${pantry.length ? `<details class="aisle"><summary><h3>${ic('shaker')} Placard : à vérifier (${pantry.length})</h3></summary>${pantry.map(row).join('')}</details>` : ''}
+    <div class="aisle extras"><div class="ahead"><h3>Autres articles</h3>${extras.length ? `<span class="acount">${extras.filter(x => x.e.done).length}/${extras.length}</span>` : ''}</div>
+      ${extras.sort((a, b) => a.e.done - b.e.done).map(({ id, e, mid }) => `<div class="item ${e.done ? 'done' : ''}"><span class="box" data-act="xcheck" data-m="${mid}" data-id="${id}">${e.done ? ic('check') : ''}</span><div class="it" data-act="xcheck" data-m="${mid}" data-id="${id}">${esc(e.txt)}</div><button class="del" data-act="xdel" data-m="${mid}" data-id="${id}" aria-label="Supprimer">${ic('x')}</button></div>`).join('')}
+      <form id="addx" class="item"><input class="field" id="xtxt" placeholder="Ajouter : lessive, pain, café…" style="padding:9px 12px"><button class="round red sm2" aria-label="Ajouter l'article">${ic('plus')}</button></form></div>
+    ${pantry.length ? (() => { const closed = aisleClosed(PANTRY, true);
+      return `<div class="aisle fold pantry ${closed ? 'closed' : ''}"><button class="ahead" data-act="aisle" data-a="${PANTRY}" data-full="1" aria-expanded="${!closed}"><h3>Placard : à vérifier</h3><span class="acount">${pantry.length}</span><span class="chev">${ic(closed ? 'down' : 'up')}</span></button>
+        ${closed ? '' : pantry.sort((x, y) => x.label.localeCompare(y.label, 'fr')).map(row).join('')}</div>`; })() : ''}
+    ${!done && !allChecked ? `<div class="pagecta"><button class="btn big ghost" data-act="shopDone" data-m="${mids}">${ic('checks')} Valider les courses</button><p class="muted small center">Possible même s'il reste des articles non cochés.</p></div>` : ''}
     <p class="muted small center">Les quantités tiennent compte du nombre de personnes de chaque recette.</p>
     ${allChecked && !done ? `<div style="height:80px"></div><div class="sticky-cta ${ctaEnter ? 'enter' : ''}"><button class="btn big green" data-act="shopDone" data-m="${mids}">${ic('checks')} Tout valider</button></div>` : ''}`;
   $('#addx').addEventListener('submit', e => {
@@ -479,26 +502,26 @@ function cookStats(m) {
 function renderCook() {
   const act = activeMenus();
   if (!act.length) {
-    setTitle('Cette semaine');
-    view.innerHTML = `<div class="empty"><div class="ee">${ic('chef')}</div><h2>Rien à cuisiner</h2><p class="muted">Choisissez d'abord le menu de la semaine : il apparaîtra ici, prêt à cuisiner.</p><button class="btn" data-act="go" data-tab="menu">Choisir le menu</button></div>`;
+    setTitle('Cuisiner');
+    view.innerHTML = `<div class="empty"><div class="ee">${ic('chef')}</div><h2>Rien à cuisiner</h2><p class="muted">Choisissez d'abord vos recettes : elles apparaîtront ici, prêtes à cuisiner.</p><button class="btn" data-act="go" data-tab="menu">Choisir des recettes</button></div>`;
     return;
   }
   const ms = shown('cook');
   if (ms) return renderCookList(ms);
-  setTitle(`Menus de la semaine <span class="sub">${act.length} en cours</span>`);
+  setTitle(`Cuisiner <span class="sub">${act.length} menus en cours</span>`);
   overview('cook', act, act.map(cookStats), 'Touchez un menu pour l\'ouvrir, ou cochez-en plusieurs pour les voir ensemble.');
 }
 function renderCookList(ms) {
   const all = ms.flatMap(m => m.items.map(it => ({ m, it, r: DB.byId.get(it.id) })).filter(x => x.r));
   const many = ms.length > 1;
-  listTitle('cook', ms, `Cette semaine${all.length ? ` <span class="sub">${all.length} repas</span>` : ''}`);
+  listTitle('cook', ms, 'Cuisiner', many ? '' : `<button class="ib" data-act="ledit" data-m="${ms[0].id}" aria-label="Modifier le menu">${ic('pencil')}</button>`);
   const cookedN = all.filter(x => isCooked(x.m, x.r.id)).length;
   const shopDone = ms.every(m => S.get(`shopdone:${m.id}`, 0));
   const mids = ms.map(m => m.id).join(',');
   const card = ({ m, it, r }, i) => {
     const c = isCooked(m, r.id), rt = S.get('rate:' + r.id, {});
     return `<div class="cookcard ${c ? 'done' : ''}">
-      <button class="cdel" data-act="cdel" data-m="${m.id}" data-id="${r.id}" aria-label="Supprimer du menu">${ic('trash')}</button>
+      <button class="cdel" data-act="cdel" data-m="${m.id}" data-id="${r.id}" aria-label="Supprimer la recette">${ic('trash')}</button>
       <button class="cplate" data-act="open" data-id="${r.id}" data-ppl="${it.ppl}">${plate(r)}${c ? `<span class="cdone">${ic('check')}</span>` : ''}</button>
       <div class="info">
         ${c ? '' : `<span class="cnum">Repas ${i + 1}</span>`}
@@ -512,15 +535,15 @@ function renderCookList(ms) {
   const section = m => {
     const rs = all.filter(x => x.m === m);
     const todo = rs.filter(x => !isCooked(m, x.r.id)), cooked = rs.filter(x => isCooked(m, x.r.id));
-    return `${many ? `<div class="menuhead">${badge(m)}<h2>${esc(menuName(m))}</h2><span class="muted small">${cooked.length}/${rs.length}</span><span class="spacer"></span><button class="round sm" data-act="ledit" data-m="${m.id}" aria-label="Modifier les plats">${ic('pencil')}</button></div>` : ''}
-      ${!todo.length && rs.length ? `<div class="banner green"><span class="bi">${ic('checks')}</span><div class="spacer"><b class="plain">${many ? 'Menu bouclé !' : 'Semaine bouclée !'}</b><br><span class="small">Archivez-${many ? 'le' : 'la'} pour ${many ? 'le' : 'la'} retrouver et préparer la suite.</span></div><button class="btn small" data-act="archive" data-m="${m.id}">Archiver</button></div>` : ''}
+    return `${many ? `<div class="menuhead">${badge(m)}<h2>${esc(menuName(m))}</h2><span class="muted small">${cooked.length}/${rs.length}</span><span class="spacer"></span><button class="round sm" data-act="ledit" data-m="${m.id}" aria-label="Modifier le menu">${ic('pencil')}</button></div>` : ''}
+      ${!todo.length && rs.length ? `<div class="banner green"><span class="bi">${ic('checks')}</span><div class="spacer"><b class="plain">Menu terminé !</b><br><span class="small">Archivez-le pour le retrouver dans les Archives.</span></div><button class="btn small" data-act="archive" data-m="${m.id}">Archiver</button></div>` : ''}
       ${todo.length ? `${many ? '' : '<h2 class="section-title">À cuisiner</h2>'}${todo.map((x, i) => card(x, i)).join('')}` : ''}
       ${cooked.length ? `<h2 class="section-title${many ? ' small' : ''}">Déjà mangé</h2>${cooked.map(x => card(x)).join('')}` : ''}`;
   };
   view.innerHTML = `
     <p class="muted" style="margin:0">${cookedN}/${all.length} repas cuisinés</p>
     <div class="progress"><i style="width:${all.length ? Math.round(cookedN / all.length * 100) : 0}%"></i></div>
-    ${!shopDone && cookedN < all.length ? `<div class="banner soft"><span class="bi">${ic('cart')}</span><div class="spacer small">Les courses ne sont pas encore validées.</div><button class="btn small ghost" data-act="goShop" data-m="${mids}">Courses</button></div>` : ''}
+    ${!shopDone && cookedN < all.length ? `<div class="banner soft"><span class="bi">${ic('cart')}</span><div class="spacer small">Les courses ne sont pas encore validées.</div><button class="btn small ghost" data-act="goShop" data-m="${mids}">Voir</button></div>` : ''}
     ${ms.map(section).join('')}
     <div style="height:20px"></div>`;
 }
@@ -539,14 +562,14 @@ function renderHistory() {
   setTitle('Archives');
   const hs = S.list('hist:').map(([, h]) => h).sort((a, b) => b.date - a.date);
   if (!hs.length) {
-    view.innerHTML = `<div class="empty"><div class="ee">${ic('book')}</div><h2>Aucun menu archivé</h2><p class="muted">Quand une semaine est finie, appuyez sur « Semaine terminée » dans votre menu : elle arrive ici.</p></div>${deletedBlock()}`;
+    view.innerHTML = `<div class="empty"><div class="ee">${ic('book')}</div><h2>Aucun menu archivé</h2><p class="muted">Quand un menu est fini, appuyez sur « Archiver ce menu » dans Choisir : il arrive ici.</p></div>${deletedBlock()}`;
     return;
   }
   view.innerHTML = hs.map(h => {
     const rs = h.items.map(i => DB.byId.get(i.id)).filter(Boolean);
     const open = histOpen.has(h.id);
     return `<div class="hist">
-      <div class="row" data-act="hopen" data-id="${h.id}"><div class="spacer"><h3>${h.name ? esc(h.name) : `Semaine du ${fmtDate(h.created || h.date)}`}</h3><span class="muted small">${rs.length} recettes</span></div><span class="chev">${ic(open ? 'up' : 'down')}</span></div>
+      <div class="row" data-act="hopen" data-id="${h.id}"><div class="spacer"><h3>${h.name ? esc(h.name) : `Menu du ${shortDate(h.created || h.date)}`}</h3><span class="muted small">${rs.length} recette${rs.length > 1 ? 's' : ''} · archivé le ${shortDate(h.date)}</span></div><span class="chev">${ic(open ? 'up' : 'down')}</span></div>
       <div class="thumbs" data-act="hopen" data-id="${h.id}">${rs.slice(0, 7).map(r => r.img ? `<img src="${esc(r.img)}" loading="lazy" alt="" data-fb="${r.t}">` : `<div class="ph">${typeIcon(r.t)}</div>`).join('')}</div>
       ${open ? `<div class="list">${rs.map(r => {
         const rt = S.get('rate:' + r.id, {});
@@ -554,7 +577,7 @@ function renderHistory() {
         return `<div class="li" data-act="open" data-id="${r.id}" data-ppl="${it?.ppl || ''}">${r.img ? `<img src="${esc(r.img)}" loading="lazy" alt="" data-fb="${r.t}">` : `<div class="ph">${typeIcon(r.t)}</div>`}<span class="nm">${esc(name(r))}</span><span class="rt">${rt.thumb === 1 ? ic('thumbUp', 'sm') : rt.thumb === -1 ? ic('thumbDown', 'sm') : ''}${rt.stars ? ' ' + ic('starFill', 'sm').repeat(rt.stars) : ''}</span></div>`;
       }).join('')}
         <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn small" data-act="redo" data-id="${h.id}">${ic('redo')} Refaire ce menu</button>
-        <button class="pill" data-act="hrate" data-id="${h.id}">Noter</button><span class="spacer"></span><button class="pill" data-act="hdel" data-id="${h.id}" aria-label="Supprimer">${ic('trash')}</button></div></div>` : ''}
+        <button class="pill" data-act="hrate" data-id="${h.id}">${ic('thumbUp')} Noter</button><span class="spacer"></span><button class="round sm" data-act="hdel" data-id="${h.id}" aria-label="Supprimer des archives">${ic('trash')}</button></div></div>` : ''}
     </div>`;
   }).join('') + deletedBlock();
 }
@@ -570,7 +593,7 @@ async function loadLex() {
 }
 function renderProfile() {
   const st = R.settings();
-  setTitle('Profil');
+  setTitle('Profil <span class="sub">et réglages</span>');
   const code = S.householdCode();
   const sy = S.sync;
   const exLabel = k => ingLex?.fr.get(k) ? `${ingLex.fr.get(k)}` : k;
@@ -578,7 +601,7 @@ function renderProfile() {
     <div class="panel"><h3>${ic('users')} Foyer</h3><p class="muted small">Valeurs par défaut des nouveaux menus.</p>
       <div class="row"><span class="spacer">Personnes</span>${stepper('setPeople', 0, st.people)}</div>
       <div class="row" style="margin-top:10px"><span class="spacer">Repas par semaine</span>${stepper('setMeals', 0, st.meals)}</div>
-      <div style="margin-top:14px"><span>Dans le menu de la semaine :</span><div class="fchips" style="margin-top:8px;flex-wrap:wrap">
+      <div style="margin-top:14px"><span>Recettes proposées :</span><div class="fchips" style="margin-top:8px;flex-wrap:wrap">
         ${['plat', 'entree', 'petit-dej', 'dessert'].map(t => `<button class="fchip ${st.menuTypes.includes(t) ? 'on' : ''}" data-act="mtype" data-v="${t}">${TYPES[t]}</button>`).join('')}</div></div>
       <div style="margin-top:6px"><span>Temps max conseillé :</span><div class="fchips" style="margin-top:8px">
         ${[[0, 'Sans limite'], [30, '30 min'], [45, '45 min'], [60, '1 h']].map(([v, l]) => `<button class="fchip ${st.maxTime === v ? 'on' : ''}" data-act="maxt" data-v="${v}">${l}</button>`).join('')}</div></div>
@@ -642,8 +665,9 @@ window.addEventListener('popstate', e => {
   const st = navState();
   // le navigateur a déjà animé le retour (geste iOS, retour prédictif Android) : pas de seconde animation
   const uaAnim = !!e.hasUAVisualTransition;
-  if (!st.modal) document.querySelectorAll('.modal-bg').forEach(m => m.remove());
-  const closedOverlay = (!st.modal && !!document.querySelector('.modal-bg')) || (!st.sheet && !sheet.hidden);
+  const closedOverlay = (!st.modal && !!document.querySelector('.modal-bg:not(.closing)')) || (!st.sheet && !sheet.hidden);
+  if (!st.modal) document.querySelectorAll('.modal-bg').forEach(dropModal);
+  if (afterPop) { const f = afterPop; afterPop = null; f(); }
   if (!st.sheet && !sheet.hidden) closeSheet(uaAnim);
   if (pendingTab) { const t = pendingTab; pendingTab = null; switchTab(t); return; }
   if (goingHome) { goingHome = false; switchTab('menu', { fromPop: true }); return; }
@@ -688,7 +712,7 @@ async function renderSheet(top) {
   if (!sheetState || sheetState.id !== id) return;
   const y = sheet.scrollTop;
   const f = ppl / (d.serv || 4);
-  const rt = S.get('rate:' + id, {}), fav = S.get('fav:' + id, false), inM = inMenu(id);
+  const rt = S.get('rate:' + id, {}), fav = S.get('fav:' + id, false), inM = inMenu(id), m = menu();
   const main = d.ing.filter(e => !e.p), pantry = d.ing.filter(e => e.p && !e.h);
   const full = Math.round(r.r * 2) / 2;
   const starsTxt = ic('starFill').repeat(Math.floor(full)) + (full % 1 ? ic('starHalf') : '') + ic('star').repeat(5 - Math.ceil(full));
@@ -726,7 +750,7 @@ async function renderSheet(top) {
       <div class="thumbs"><button class="${rt.thumb === 1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="1" aria-label="J'ai aimé">${ic('thumbUp')}</button><button class="${rt.thumb === -1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="-1" aria-label="Bof">${ic('thumbDown')}</button></div>
       <div class="st">${[1, 2, 3, 4, 5].map(i => `<button class="${(rt.stars || 0) >= i ? 'on' : ''}" data-act="stars" data-id="${id}" data-v="${i}" aria-label="${i} étoile${i > 1 ? 's' : ''}">${ic((rt.stars || 0) >= i ? 'starFill' : 'star')}</button>`).join('')}</div></div>
     <div class="srcline">Recette de la communauté Food.com${d.by ? ' · par ' + esc(d.by) : ''} · <a href="${foodUrl(r)}" target="_blank" rel="noopener">voir l'original</a></div>
-    <div class="sticky-cta${inM ? ' inpage' : ''}"><button class="btn big" data-act="${inM ? 'sremove' : 'sadd'}" data-id="${id}">${inM ? 'Retirer du menu' : 'Ajouter au menu'}</button></div>
+    <div class="sticky-cta${inM ? ' inpage' : ''}"><button class="btn big" data-act="${inM ? 'sremove' : 'sadd'}" data-id="${id}">${inM ? 'Retirer du menu' : `${ic('plus')} Ajouter au menu`}</button>${menus().length > 1 ? `<div class="ctasub">${badge(m)}${esc(menuName(m))}</div>` : ''}</div>
   </div>`;
   sheet.scrollTop = top ? 0 : y;
   T.setRecipe(id);
@@ -741,11 +765,11 @@ const A = {
   add: el => addToMenu(+el.dataset.id),
   remove: el => removeFromMenu(+el.dataset.id),
   replace: el => replaceInMenu(+el.dataset.id),
-  toggleMenu: el => { const id = +el.dataset.id; inMenu(id) ? removeFromMenu(id) : addToMenu(id); },
+  toggleMenu: el => { const id = +el.dataset.id; if (inMenu(id)) { const m = menu(); m.items = m.items.filter(i => i.id !== id); saveMenu(m); toast('Retirée du menu'); } else addToMenu(id); },
   ppl: el => { const m = menu(); const it = m.items.find(i => i.id === +el.dataset.id); if (!it) return; it.ppl = Math.max(1, Math.min(20, it.ppl + +el.dataset.d)); saveMenu(m); },
   meals: el => { const n = Math.max(0, Math.min(14, menu().items.length + +el.dataset.d)); fillMenu(n); },
   fill: () => fillMenu(),
-  archive: el => { if (confirm(menus().length > 1 ? 'Archiver ce menu ? Il rejoindra les archives.' : 'Archiver ce menu dans les archives et en commencer un nouveau ?')) archiveWeek(el.dataset.m); },
+  archive: el => { const mid = el.dataset.m; ask({ title: 'Archiver ce menu ?', text: 'Il rejoint les Archives, où vous pourrez le refaire. On vous demandera ensuite votre avis sur les recettes.', ok: 'Archiver', onOk: () => archiveWeek(mid) }); },
   sadd: el => addToMenu(+el.dataset.id, sheetState?.ppl),
   sremove: el => removeFromMenu(+el.dataset.id),
   sppl: el => { sheetState.ppl = Math.max(1, Math.min(20, sheetState.ppl + +el.dataset.d)); const m = menu(); const it = m.items.find(i => i.id === sheetState.id); if (it) { it.ppl = sheetState.ppl; saveMenu(m); } else renderSheet(); },
@@ -809,7 +833,7 @@ const A = {
     S.del(k); $('#toast').hidden = true;
     if (el.closest('#toast') == null) toast('Recette remise dans le menu');
   },
-  purgeDel: el => { if (confirm('Effacer définitivement cette recette de la liste ?')) S.del('del:' + el.dataset.id); },
+  purgeDel: el => { const k = 'del:' + el.dataset.id; ask({ title: 'Effacer définitivement ?', text: 'La recette disparaît de la liste des recettes supprimées.', ok: 'Effacer', danger: true, onOk: () => S.del(k) }); },
   toggleDeleted: () => { showDeleted = !showDeleted; renderHistory(); },
   check: el => {
     const key = el.dataset.k, mids = el.dataset.m.split(',');
@@ -824,7 +848,7 @@ const A = {
       + ids.flatMap(mid => S.list(`extra:${mid}:`)).filter(([, e]) => !e.done).map(([, e]) => '\n- ' + e.txt).join('');
     share(txt);
   },
-  shareMenu: () => share('Menu de la semaine\n\n' + menu().items.map(i => DB.byId.get(i.id)).filter(Boolean).map(r => '- ' + name(r) + ' (' + foodUrl(r) + ')').join('\n')),
+  shareMenu: () => share(menuName(menu()) + '\n\n' + menu().items.map(i => DB.byId.get(i.id)).filter(Boolean).map(r => '- ' + name(r) + ' (' + foodUrl(r) + ')').join('\n')),
   hopen: el => { const id = el.dataset.id; histOpen.has(id) ? histOpen.delete(id) : histOpen.add(id); renderHistory(); },
   redo: el => {
     const h = S.get('hist:' + el.dataset.id); if (!h) return;
@@ -832,15 +856,16 @@ const A = {
     const m = { id: S.uid(), created: Date.now(), items: h.items.map(i => ({ ...i })) };
     saveMenu(m); setCur(m.id); toast('Menu ajouté à vos menus en cours'); switchTab('menu');
   },
-  hrate: el => { const h = S.get('hist:' + el.dataset.id); if (h) askRatings(h.items.map(i => i.id), 'Noter cette semaine'); },
-  hdel: el => { if (confirm('Supprimer ce menu des archives ?')) S.del('hist:' + el.dataset.id); },
+  hrate: el => { const h = S.get('hist:' + el.dataset.id); if (h) askRatings(h.items.map(i => i.id), 'Noter ce menu'); },
+  hdel: el => { const k = 'hist:' + el.dataset.id; undoHist = S.get(k); if (!undoHist) return; S.del(k); toast('Menu supprimé des archives', { label: 'Annuler', act: 'undoHist', id: '' }); },
+  undoHist: () => { if (undoHist) S.set('hist:' + undoHist.id, undoHist); undoHist = null; $('#toast').hidden = true; },
   // ---- plusieurs menus / listes
   pickMenu: el => { setCur(el.dataset.m); render(); },
   newMenu: () => { startNewMenu(); tab === 'menu' ? render() : switchTab('menu'); },
   renameMenu: el => {
-    const m = getMenu(el.dataset.m) || menu();
-    const v = prompt('Nom du menu', menuName(m)); if (v == null) return;
-    m.name = v.trim().slice(0, 40) || undefined; saveMenu(m);
+    const mid = el.dataset.m;
+    ask({ title: 'Renommer le menu', ok: 'Enregistrer', input: { value: menuName(getMenu(mid) || menu()), ph: 'Ex : Semaine chargée, Week-end…' },
+      onOk: v => { const m = getMenu(mid) || menu(); m.name = (v || '').trim().slice(0, 40) || undefined; saveMenu(m); } });
   },
   delCur: () => deleteMenus([menu().id]),
   undoMenus: () => { undoMenus.forEach(m => S.set('amenu:' + m.id, m)); undoMenus = []; $('#toast').hidden = true; },
@@ -860,15 +885,9 @@ const A = {
   ledit: el => { setCur(el.dataset.m); switchTab('menu'); },
   aisle: el => { const a = el.dataset.a, full = el.dataset.full === '1'; aisleFold.set(a, { full, closed: !aisleClosed(a, full) }); renderShop(); },
   dishAdd: el => { setCur(el.dataset.m); switchTab('discover'); },
-  dishDel: el => {
-    const m = getMenu(el.dataset.m), id = +el.dataset.id; if (!m) return;
-    const idx = m.items.findIndex(i => i.id === id); if (idx < 0) return;
-    dishUndo = { mid: m.id, idx, it: m.items[idx] };
-    m.items = m.items.filter(i => i.id !== id); saveMenu(m);
-    toast('Plat retiré de la liste', { label: 'Annuler', act: 'dishUndo', id: '' });
-  },
+  dishDel: el => { const m = getMenu(el.dataset.m); if (m) removeFromMenu(+el.dataset.id, m); },
   dishUndo: () => {
-    const u = dishUndo, m = u && getMenu(u.mid); dishUndo = null; $('#toast').hidden = true;
+    const u = dishUndo, m = u && (getMenu(u.mid) || (draft?.id === u.mid ? draft : null)); dishUndo = null; $('#toast').hidden = true;
     if (!m || m.items.some(i => i.id === u.it.id)) return;
     m.items.splice(Math.min(u.idx, m.items.length), 0, u.it); saveMenu(m);
   },
@@ -882,10 +901,15 @@ const A = {
   createHH: async () => { await S.setHousehold(S.newCode()); toast('Foyer créé : partagez le code'); renderProfile(); },
   joinHH: async () => { const v = $('#joincode').value.trim(); if (v.replace(/-/g, '').length < 16) return toast('Code incomplet'); await S.setHousehold(v); toast(S.sync.status === 'ok' ? 'Foyer rejoint' : 'Code enregistré'); renderProfile(); },
   copyCode: () => { navigator.clipboard?.writeText(S.householdCode()); toast('Code copié'); },
-  leave: () => { if (confirm('Ce téléphone ne sera plus synchronisé. Continuer ?')) { S.setHousehold(''); renderProfile(); } },
+  leave: () => ask({ title: 'Quitter le foyer ?', text: 'Ce téléphone ne sera plus synchronisé. Vos données restent dessus.', ok: 'Quitter', danger: true, onOk: () => { S.setHousehold(''); renderProfile(); } }),
   checkUpdate: async () => { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) { await reg.update(); toast('Vérifié : si une version existe, l\'app va se recharger'); } else location.reload(); },
   haptics: () => { setHaptics(!hapticsOn()); renderProfile(); },
-  reset: () => { if (confirm('Effacer menu, archives et réglages de CE téléphone ?')) { S.resetLocal(); location.reload(); } },
+  reset: () => ask({ title: 'Réinitialiser ce téléphone ?', text: 'Menus, archives et réglages de ce téléphone seront effacés.', ok: 'Tout effacer', danger: true, onOk: () => { S.resetLocal(); location.reload(); } }),
+  askOk: el => {
+    const f = askOk, v = $('#askIn')?.value; askOk = null;
+    const bg = el.closest('.modal-bg');
+    if (navState().modal) { afterPop = () => f?.(v); history.back(); } else { dropModal(bg); f?.(v); }
+  },
 };
 async function share(text) {
   if (navigator.share) { try { await navigator.share({ text }); } catch {} }
