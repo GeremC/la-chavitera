@@ -49,13 +49,15 @@ function closeModalEl(bg) {
 }
 
 // ------------------------------------------------------------ historique (bouton / geste retour)
-// Pile : Choisir est la racine (d = 0). Les autres onglets sont un niveau au-dessus (on les remplace
-// entre eux), la recherche, la fiche recette et les fenêtres empilent un niveau de plus.
-// Retour depuis un onglet ramène à Choisir ; retour depuis Choisir quitte l'app, comme une app native.
+// Pile : Choisir est la racine (d = 0). Les autres onglets occupent un seul niveau au-dessus (remplacé
+// d'onglet en onglet) ; la recherche, les listes, la fiche recette et les fenêtres empilent un niveau de plus.
+// Retour : ferme d'abord fiche / fenêtre, puis recule d'un onglet vers la gauche ; depuis Choisir, quitte l'app.
 const navState = () => history.state && typeof history.state.d === 'number' ? history.state : { tab: 'menu', d: 0 };
 const navPush = st => history.pushState({ ...st, d: navState().d + 1 }, '');
 const navReplace = st => history.replaceState(st, '');
 let pendingTab = null;
+// Courses / Cuisiner : on retient la ou les listes ouvertes pour que le retour y ramène
+const tabState = t => (t === 'shop' || t === 'cook') && pick[t] ? { tab: t, list: pick[t] } : { tab: t };
 function plate(r, cls = 'plate') {
   if (r && r.img) return `<img class="${cls}" loading="lazy" src="${esc(r.img)}" alt="" data-fb="${r.t || ''}">`;
   return `<div class="${cls} ph">${typeIcon(r?.t)}</div>`;
@@ -634,26 +636,25 @@ function closeSheet(instant) {
   sheet.classList.add('closing');
   setTimeout(() => { sheet.classList.remove('closing'); if (!sheetState) { sheet.hidden = true; sheet.innerHTML = ''; } }, 220);
 }
-let lastExitTry = 0;
+let goingHome = false;
+const TAB_LEFT = { discover: 'menu', shop: 'menu', cook: 'shop', history: 'cook', profile: 'history' };
 window.addEventListener('popstate', e => {
-  // entrée « garde » sous Choisir : le retour ne quitte plus l'app d'un coup (écran noir sur Android)
-  if (history.state && history.state.guard) {
-    if (Date.now() - lastExitTry < 2500) { history.back(); return; }
-    lastExitTry = Date.now();
-    history.pushState({ tab: 'menu', d: 0 }, '');
-    document.querySelectorAll('.modal-bg').forEach(m => m.remove());
-    if (!sheet.hidden) closeSheet(true);
-    pendingTab = null;
-    if (tab !== 'menu') switchTab('menu', { fromPop: true, noAnim: true });
-    toast('Appuyez encore sur retour pour quitter');
-    return;
-  }
   const st = navState();
   // le navigateur a déjà animé le retour (geste iOS, retour prédictif Android) : pas de seconde animation
   const uaAnim = !!e.hasUAVisualTransition;
   if (!st.modal) document.querySelectorAll('.modal-bg').forEach(m => m.remove());
+  const closedOverlay = (!st.modal && !!document.querySelector('.modal-bg')) || (!st.sheet && !sheet.hidden);
   if (!st.sheet && !sheet.hidden) closeSheet(uaAnim);
   if (pendingTab) { const t = pendingTab; pendingTab = null; switchTab(t); return; }
+  if (goingHome) { goingHome = false; switchTab('menu', { fromPop: true }); return; }
+  // retour sur la racine depuis un onglet : on recule d'un onglet vers la gauche (Archives → Cuisiner → Courses → Choisir) ;
+  // depuis Choisir, la racine n'a rien derrière elle : le retour suivant quitte l'app
+  if (st.d === 0 && !st.sheet && !st.modal && !closedOverlay && tab !== 'menu') {
+    const left = TAB_LEFT[tab] || 'menu';
+    if (left !== 'menu') history.pushState({ ...tabState(left), d: 1 }, '');
+    switchTab(left, { fromPop: true, noAnim: uaAnim });
+    return;
+  }
   if (st.tab && st.tab !== tab) switchTab(st.tab, { fromPop: true, noAnim: uaAnim });
   if (st.sheet && sheet.hidden) openRecipe(st.sheet, 0, true);
   // retour depuis une liste ouverte : on revient à la vue d'ensemble des listes / menus
@@ -905,12 +906,10 @@ function switchTab(t, opts = {}) {
     const cur = navState();
     if (cur.sheet || cur.modal) { pendingTab = t; history.back(); return; }
     if (t === from) { window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' }); return; }
-    if (t === 'menu' && cur.d > 0) { history.go(-cur.d); return; } // retour à la racine : le popstate affiche Choisir
-    // Courses / Cuisiner : on retient la ou les listes ouvertes pour que le retour y ramène
-    const st = (t === 'shop' || t === 'cook') && pick[t] ? { tab: t, list: pick[t] } : { tab: t };
-    if (t === 'discover') navPush(st);
-    else if (cur.d === 0) navPush(st);
-    else navReplace({ ...st, d: cur.d });
+    if (t === 'menu' && cur.d > 0) { goingHome = true; history.go(-cur.d); return; } // retour à la racine : le popstate affiche Choisir
+    // un seul niveau au-dessus de Choisir : le retour recule ensuite d'onglet en onglet vers la gauche
+    if (cur.d === 0) navPush(tabState(t));
+    else navReplace({ ...tabState(t), d: 1 });
   }
   if (t === from) return;
   const update = () => {
@@ -922,7 +921,7 @@ function switchTab(t, opts = {}) {
   if (reduceMotion() || opts.noAnim) return update();
   const dir = TAB_ORDER[t] >= TAB_ORDER[from] ? 'fwd' : 'back';
   document.documentElement.dataset.dir = dir;
-  if (document.startViewTransition) {
+  if (document.startViewTransition && !opts.fromPop) {
     // transition native : l'ancien écran glisse et s'efface pendant que le nouveau arrive
     document.startViewTransition(() => Promise.race([update(), new Promise(r => setTimeout(r, 400))]));
   } else {
@@ -970,8 +969,7 @@ async function boot() {
   migrateMenu();
   loadLex();
   try { const r = await fetch('data/ing_img.json?v=' + DB.meta.v); if (r.ok) ingImg = await r.json(); } catch {}
-  navReplace({ guard: 1, d: -1 });
-  history.pushState({ tab: 'menu', d: 0 }, '');
+  navReplace({ tab: 'menu', d: 0 });
   render();
   S.startSync();
 }
