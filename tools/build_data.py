@@ -25,6 +25,7 @@ from fractions import Fraction
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+from units import fix_ingredients
 from lexicon import (ING_FR, PANTRY, AISLES, CATEGORY_TYPE, TYPE_FR, CUISINES, EXPENSIVE,
                      EQUIPMENT, NAME_NOISE)
 
@@ -405,6 +406,7 @@ def build(args):
             if it["raw"]: e["raw"] = it["raw"]
             if norm_ing(it["n"]) in PANTRY or k in PANTRY: e["p"] = 1
             out_ing.append(e)
+        out_ing = fix_ingredients(out_ing, has_units=bool(lines))
 
         steps_txt = " ".join(r["steps"])
         try:
@@ -445,7 +447,7 @@ def build(args):
     (DATA / "r").mkdir(parents=True, exist_ok=True)
     for old in (DATA / "r").glob("*.json"):
         old.unlink()
-    version = hashlib.md5(json.dumps([i["id"] for i in index]).encode() + str(len(translations)).encode()).hexdigest()[:10]
+    version = hashlib.md5(json.dumps([i["id"] for i in index]).encode() + str(len(translations)).encode() + b"units-v1").hexdigest()[:10]
     meta = {"v": version, "count": len(index), "buckets": BUCKETS,
             "cuisines": sorted({i["c"] for i in index if "c" in i}), "types": TYPE_FR,
             "source": "Food.com (Kaggle : Food.com - Recipes and Reviews)", "built": time.strftime("%Y-%m-%d")}

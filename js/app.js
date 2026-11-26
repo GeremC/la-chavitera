@@ -1,6 +1,6 @@
 import * as S from './store.js';
 import { DB, loadDB, details, DIFF, COST, TYPES, EQUIP, kwFr, name, minutes,
-  fmtQty, unitFamily, toBase, fromBase, foodUrl } from './data.js';
+  fmtQty, unitFamily, toBase, fromBase, foodUrl, ingLabel, ingNote } from './data.js';
 import * as R from './reco.js';
 import { ic, ingIcon, typeIcon } from './icons.js';
 import { APP_VERSION } from './version.js';
@@ -665,7 +665,7 @@ window.addEventListener('popstate', e => {
 // texte des étapes : grandes parties, ingrédients illustrés, durées → minuteur, températures
 function stepsHtml(steps, ings, f) {
   const find = ingMatcher(ings);
-  sheetState.ings = ings.map(e => ({ label: cap(e.fr || e.n), qty: e.q != null ? fmtQty(e.q * f, e.u) : '' }));
+  sheetState.ings = ings.map(e => ({ label: cap(ingLabel(e, e.q != null ? e.q * f : null)) + (e.nt ? ', ' + ingNote(e, e.q != null ? e.q * f : null) : ''), qty: e.q != null ? fmtQty(e.q * f, e.u) : '' }));
   return structureSteps(steps).map(x => {
     if (x.kind === 'section') return `<div class="stsec ${x.note ? 'note' : ''}"><span>${x.note ? ic('info', 'sm') + ' ' : ''}${esc(x.title)}</span></div>`;
     const body = renderStepText(x.text, {
@@ -713,7 +713,7 @@ async function renderSheet(top) {
     <div class="block"><h3>Ingrédients</h3>
       <div class="forppl">Pour ${stepper('sppl', id, ppl, ic('users', 'sm'))}</div>
       ${!d.units ? `<p class="muted small center">La source ne précise pas toujours les unités : quantités indicatives (adaptées à ${ppl} pers.).</p>` : ''}
-      <div class="ings">${main.map(e => `<div class="ing"><div class="bub">${ingPic(e.k, e.n)}</div><b>${e.q != null ? esc(fmtQty(e.q * f, e.u)) : ''}</b>${esc(cap(e.fr || e.n))}${e.raw && !e.fr ? `<div class="orig">${esc(e.raw)}</div>` : ''}</div>`).join('')}</div>
+      <div class="ings">${main.map(e => `<div class="ing"><div class="bub">${ingPic(e.k, e.n)}</div><b>${e.q != null ? esc(fmtQty(e.q * f, e.u)) : ''}</b>${esc(cap(ingLabel(e, e.q != null ? e.q * f : null)))}${ingNote(e, e.q != null ? e.q * f : null) ? `<div class="orig">${esc(ingNote(e, e.q != null ? e.q * f : null))}</div>` : ''}${e.raw && !e.fr ? `<div class="orig">${esc(e.raw)}</div>` : ''}</div>`).join('')}</div>
       ${pantry.length ? `<div class="pantry"><b>Vérifiez que vous avez…</b><br><span class="muted">${pantry.map(e => esc(cap(e.fr || e.n)) + (e.q != null && e.u ? ' (' + esc(fmtQty(e.q * f, e.u)) + ')' : '')).join(' · ')}</span></div>` : ''}
     </div>
     <div class="block steps"><h3>Recette</h3>
