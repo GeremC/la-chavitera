@@ -33,7 +33,7 @@ function toast(msg, action) {
   const t = $('#toast');
   t.innerHTML = esc(msg) + (action ? `<button class="tact" data-act="${action.act}" data-id="${esc(action.id)}">${esc(action.label)}</button>` : '');
   t.classList.toggle('withact', !!action); t.hidden = false;
-  clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, action ? 5000 : 2200);
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, action ? 3000 : 2200);
 }
 function modal(html) {
   const bg = document.createElement('div'); bg.className = 'modal-bg';
@@ -128,7 +128,7 @@ function deleteMenus(ids) {
 }
 function addToMenu(id, ppl) {
   const m = menu(); if (m.items.some(i => i.id === id)) return;
-  m.items.push({ id, ppl: ppl || R.settings().people }); saveMenu(m); toast('Ajouté au menu');
+  m.items.unshift({ id, ppl: ppl || R.settings().people }); saveMenu(m); toast('Ajouté en haut du menu'); // le dernier ajouté en premier
 }
 function removeFromMenu(id) { const m = menu(); m.items = m.items.filter(i => i.id !== id); saveMenu(m); }
 function replaceInMenu(id) {
@@ -228,12 +228,16 @@ function renderMenu() {
 }
 
 // onglets des menus en cours : passer de l'un à l'autre, renommer, en créer un nouveau
+// pastille numérotée d'un menu en cours (affichée seulement quand il y en a plusieurs)
+function menuNo(m) { const act = activeMenus(); return act.length > 1 ? act.findIndex(x => x.id === m.id) + 1 : 0; }
+const badgeN = n => n ? `<span class="mbadge c${(n - 1) % 6}" aria-label="Menu ${n}">${n}</span>` : '';
+const badge = m => badgeN(menuNo(m));
 function menuSwitch(cur) {
   const all = menus(), list = all.some(m => m.id === cur.id) ? all : [...all, cur];
   if (list.length < 2 && !cur.items.length) return '';
   return `<div class="fchips menus">${list.map(m => {
     const on = m.id === cur.id;
-    return `<button class="fchip ${on ? 'on' : ''}" data-act="${on ? 'renameMenu' : 'pickMenu'}" data-m="${m.id}"${on ? ' aria-label="Renommer ce menu"' : ''}>${esc(menuName(m))}<span class="n">${m.items.length}</span>${on ? ic('pencil', 'sm') : ''}</button>`;
+    return `<button class="fchip ${on ? 'on' : ''}" data-act="${on ? 'renameMenu' : 'pickMenu'}" data-m="${m.id}"${on ? ' aria-label="Renommer ce menu"' : ''}>${badge(m)}${esc(menuName(m))}<span class="n">${m.items.length}</span>${on ? ic('pencil', 'sm') : ''}</button>`;
   }).join('')}<button class="fchip add" data-act="newMenu">${ic('plus', 'sm')} Nouveau menu</button></div>`;
 }
 
@@ -315,10 +319,11 @@ function lcard(m, st, t) {
   return `<div class="lcard ${on ? 'on' : ''} ${st.finished ? 'fin' : ''}">
     <button class="lsel" data-act="lsel" data-t="${t}" data-m="${m.id}" aria-label="Sélectionner" aria-pressed="${on}"><span class="box">${on ? ic('check') : ''}</span></button>
     <div class="lbody" data-act="lopen" data-t="${t}" data-m="${m.id}">
-      <div class="lhead"><h3>${esc(menuName(m))}</h3>${st.finished ? `<span class="lok">${ic('check', 'sm')} ${t === 'shop' ? 'Faites' : 'Bouclé'}</span>` : `<span class="lpct">${pct} %</span>`}</div>
+      <div class="lhead">${badge(m)}<h3>${esc(menuName(m))}</h3>${st.finished ? `<span class="lok">${ic('check', 'sm')} ${t === 'shop' ? 'Faites' : 'Bouclé'}</span>` : `<span class="lpct">${pct} %</span>`}</div>
       <span class="muted small">${rs.length} recette${rs.length > 1 ? 's' : ''} · ${st.done}/${st.total} ${t === 'shop' ? 'articles' : 'repas cuisinés'}</span>
       <div class="progress"><i style="width:${pct}%"></i></div>
       <div class="thumbs">${rs.slice(0, 6).map(miniPlate).join('')}${rs.length > 6 ? `<span class="more">+${rs.length - 6}</span>` : ''}</div>
+      <div class="lnames">${rs.map(r => esc(name(r))).join(' · ')}</div>
     </div>
     <button class="ledit" data-act="ledit" data-m="${m.id}" aria-label="Modifier les plats">${ic('pencil')}</button>
   </div>`;
@@ -365,7 +370,7 @@ async function shoppingList(ms) {
       if (!agg.has(key)) agg.set(key, { key, label, aisle: e.a || 'Autres', pantry: !!e.p, fam, q: 0, hasQ: false, units: new Set(), from: new Set(), ms: new Set(), en: e.n, k: e.k });
       const a = agg.get(key);
       if (e.q != null) { a.q += toBase(e.q * f, e.u); a.hasQ = true; if (e.u) a.units.add(e.u); }
-      a.from.add(name(r)); a.ms.add(m.id);
+      a.from.add(m.id + '|' + name(r)); a.ms.add(m.id);
     }
   }
   return [...agg.values()].map(a => {
@@ -398,9 +403,22 @@ async function renderShop() {
 // plats d'une liste : on en retire ou on en ajoute, les ingrédients suivent
 function dishesBlock(ms) {
   return `<div class="aisle dishes"><h3>Plats</h3>${ms.map(m => `
-    ${ms.length > 1 ? `<div class="dishmenu">${esc(menuName(m))}</div>` : ''}
-    <div class="dishrow">${m.items.map(it => { const r = DB.byId.get(it.id); return r ? `<span class="dish"><span class="dhit" data-act="open" data-id="${r.id}" data-ppl="${it.ppl}">${miniPlate(r)}<span class="dn">${esc(name(r))}</span></span><button data-act="dishDel" data-m="${m.id}" data-id="${r.id}" aria-label="Retirer ${esc(name(r))}">${ic('x', 'sm')}</button></span>` : ''; }).join('')}
+    ${ms.length > 1 ? `<div class="dishmenu">${badge(m)}${esc(menuName(m))}</div>` : ''}
+    <div class="dishrow">${m.items.map(it => { const r = DB.byId.get(it.id); return r ? `<span class="dish"><span class="dhit" data-act="open" data-id="${r.id}" data-ppl="${it.ppl}">${miniPlate(r)}${ms.length > 1 ? badge(m) : ''}<span class="dn">${esc(name(r))}</span></span><button data-act="dishDel" data-m="${m.id}" data-id="${r.id}" aria-label="Retirer ${esc(name(r))}">${ic('x', 'sm')}</button></span>` : ''; }).join('')}
       <button class="dish add" data-act="dishAdd" data-m="${m.id}">${ic('plus', 'sm')} Ajouter un plat</button></div>`).join('')}</div>`;
+}
+// recettes d'où vient un article ; avec plusieurs listes ensemble, chacune porte la pastille de son menu
+function fromHtml(i, withBadge) {
+  return [...i.from].map(f => { const k = f.indexOf('|'), m = getMenu(f.slice(0, k)), n = f.slice(k + 1);
+    return `<span class="fr">${withBadge && m ? badge(m) : ''}${esc(n)}</span>`; }).join('<span class="sep">·</span>');
+}
+// rayons repliables : un rayon fini se replie tout seul ; un choix à la main tient tant que le rayon
+// ne change pas d'état (fini / pas fini)
+const aisleFold = new Map();
+function aisleClosed(a, full) {
+  const f = aisleFold.get(a);
+  if (f && f.full === full) return f.closed;
+  aisleFold.delete(a); return full;
 }
 async function renderShopList(ms) {
   const ids = ms.map(m => m.id), mids = ids.join(',');
@@ -417,7 +435,7 @@ async function renderShopList(ms) {
   const doneN = main.filter(isChecked).length + extras.filter(x => x.e.done).length;
   const totalN = main.length + extras.length;
   const row = i => { const c = isChecked(i); return `<div class="item ${c ? 'done' : ''}" data-act="check" data-k="${esc(i.key)}" data-m="${i.ms.join(',')}">
-      <span class="box">${c ? ic('check') : ''}</span><span class="thumb">${ingPic(i.k, i.en)}</span><div class="it">${esc(i.label)}<div class="from">${esc([...i.from].join(' · '))}</div></div><span class="qty">${esc(i.qty)}</span></div>`; };
+      <span class="box">${c ? ic('check') : ''}</span><span class="thumb">${ingPic(i.k, i.en)}</span><div class="it">${esc(i.label)}<div class="from">${fromHtml(i, ms.length > 1)}</div></div><span class="qty">${esc(i.qty)}</span></div>`; };
   const groups = AISLE_ORDER.map(a => [a, main.filter(i => i.aisle === a)]).filter(([, l]) => l.length);
   const dones = ms.map(m => S.get(`shopdone:${m.id}`, 0));
   const done = dones.every(Boolean) ? Math.max(...dones) : 0;
@@ -432,7 +450,11 @@ async function renderShopList(ms) {
     <p class="muted" style="margin:0">${ms.length > 1 ? `${ms.length} listes · ` : ''}${nR} recette${nR > 1 ? 's' : ''} · ${doneN}/${totalN} articles</p>
     <div class="progress"><i style="width:${totalN ? Math.round(doneN / totalN * 100) : 0}%"></i></div>
     ${dishesBlock(ms)}
-    ${groups.map(([a, l]) => `<div class="aisle"><h3>${a}</h3>${l.sort((x, y) => x.label.localeCompare(y.label, 'fr')).map(row).join('')}</div>`).join('')}
+    ${groups.map(([a, l]) => {
+      const n = l.filter(isChecked).length, closed = aisleClosed(a, n === l.length);
+      return `<div class="aisle fold ${closed ? 'closed' : ''} ${n === l.length ? 'full' : ''}"><button class="ahead" data-act="aisle" data-a="${esc(a)}" data-full="${n === l.length ? 1 : 0}" aria-expanded="${!closed}"><h3>${a}</h3><span class="acount">${n === l.length ? ic('check', 'sm') : ''}${n}/${l.length}</span><span class="chev">${ic(closed ? 'down' : 'up')}</span></button>
+        ${closed ? '' : l.sort((x, y) => x.label.localeCompare(y.label, 'fr')).map(row).join('')}</div>`;
+    }).join('')}
     <div class="aisle"><h3>Autres articles</h3>
       ${extras.map(({ id, e, mid }) => `<div class="item ${e.done ? 'done' : ''}"><span class="box" data-act="xcheck" data-m="${mid}" data-id="${id}">${e.done ? ic('check') : ''}</span><div class="it" data-act="xcheck" data-m="${mid}" data-id="${id}">${esc(e.txt)}</div><button class="del" data-act="xdel" data-m="${mid}" data-id="${id}" aria-label="Supprimer">${ic('x')}</button></div>`).join('')}
       <form id="addx" class="item"><input class="field" id="xtxt" placeholder="Ajouter : lessive, pain, café…" style="padding:9px 12px"><button class="round red" style="width:40px;height:40px;font-size:22px" aria-label="Ajouter">${ic('plus')}</button></form></div>
@@ -487,7 +509,7 @@ function renderCookList(ms) {
   const section = m => {
     const rs = all.filter(x => x.m === m);
     const todo = rs.filter(x => !isCooked(m, x.r.id)), cooked = rs.filter(x => isCooked(m, x.r.id));
-    return `${many ? `<div class="menuhead"><h2>${esc(menuName(m))}</h2><span class="muted small">${cooked.length}/${rs.length}</span><span class="spacer"></span><button class="round sm" data-act="ledit" data-m="${m.id}" aria-label="Modifier les plats">${ic('pencil')}</button></div>` : ''}
+    return `${many ? `<div class="menuhead">${badge(m)}<h2>${esc(menuName(m))}</h2><span class="muted small">${cooked.length}/${rs.length}</span><span class="spacer"></span><button class="round sm" data-act="ledit" data-m="${m.id}" aria-label="Modifier les plats">${ic('pencil')}</button></div>` : ''}
       ${!todo.length && rs.length ? `<div class="banner green"><span class="bi">${ic('checks')}</span><div class="spacer"><b class="plain">${many ? 'Menu bouclé !' : 'Semaine bouclée !'}</b><br><span class="small">Archivez-${many ? 'le' : 'la'} pour ${many ? 'le' : 'la'} retrouver et préparer la suite.</span></div><button class="btn small" data-act="archive" data-m="${m.id}">Archiver</button></div>` : ''}
       ${todo.length ? `${many ? '' : '<h2 class="section-title">À cuisiner</h2>'}${todo.map((x, i) => card(x, i)).join('')}` : ''}
       ${cooked.length ? `<h2 class="section-title${many ? ' small' : ''}">Déjà mangé</h2>${cooked.map(x => card(x)).join('')}` : ''}`;
@@ -834,6 +856,7 @@ const A = {
   },
   ldel: el => { const t = el.dataset.t, ids = [...picked[t]]; picked[t].clear(); deleteMenus(ids); },
   ledit: el => { setCur(el.dataset.m); switchTab('menu'); },
+  aisle: el => { const a = el.dataset.a, full = el.dataset.full === '1'; aisleFold.set(a, { full, closed: !aisleClosed(a, full) }); renderShop(); },
   dishAdd: el => { setCur(el.dataset.m); switchTab('discover'); },
   dishDel: el => {
     const m = getMenu(el.dataset.m), id = +el.dataset.id; if (!m) return;
