@@ -25,14 +25,14 @@ def main():
                 new = [fr_step_units(x) for x in d["st"]]
                 n_steps += sum(a != b for a, b in zip(new, d["st"]))
                 d["st"] = new
-            keys[int(rid)] = [e["k"] for e in d["ing"] if not e.get("p")][:10]
+            keys[int(rid)] = [e["k"] for e in d["ing"] if not e.get("p") and not e.get("h")][:10]
         f.write_text(json.dumps(content, ensure_ascii=False, separators=(",", ":")), "utf-8")
     idx = json.loads((DATA / "index.json").read_text("utf-8"))
     for r in idx["recipes"]:
         if r["id"] in keys:
             r["k"] = keys[r["id"]]
     # nouvelle version : les navigateurs rechargent les fichiers (?v=...)
-    v = hashlib.md5((idx["v"] + "units-v2").encode()).hexdigest()[:10]
+    v = hashlib.md5((idx["v"] + "units-v3").encode()).hexdigest()[:10]
     idx["v"] = v
     (DATA / "index.json").write_text(json.dumps(idx, ensure_ascii=False, separators=(",", ":")), "utf-8")
     meta = json.loads((DATA / "version.json").read_text("utf-8"))

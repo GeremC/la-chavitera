@@ -1,6 +1,6 @@
 import * as S from './store.js';
 import { DB, loadDB, details, DIFF, COST, TYPES, EQUIP, kwFr, name, minutes,
-  fmtQty, unitFamily, toBase, fromBase, foodUrl, ingLabel, ingNote } from './data.js';
+  fmtQty, unitFamily, toBase, fromBase, foodUrl, ingLabel, ingNote, qtyFor } from './data.js';
 import * as R from './reco.js';
 import { ic, ingIcon, typeIcon } from './icons.js';
 import { APP_VERSION } from './version.js';
@@ -364,10 +364,11 @@ async function shoppingList(ms) {
     const d = await details(it.id); if (!d) continue;
     const f = it.ppl / (d.serv || 4);
     for (const e of d.ing) {
+      if (e.h) continue; // titre de section
       const label = cap(e.fr || e.n);
       const fam = unitFamily(e.u);
       const key = norm(label).replace(/(\w)s\b/g, '$1') + '|' + fam;
-      if (!agg.has(key)) agg.set(key, { key, label, aisle: e.a || 'Autres', pantry: !!e.p, fam, q: 0, hasQ: false, units: new Set(), from: new Set(), ms: new Set(), en: e.n, k: e.k });
+      if (!agg.has(key)) agg.set(key, { key, label, aisle: e.a || 'Autres', pantry: !!e.p, fam, w: !!e.w, q: 0, hasQ: false, units: new Set(), from: new Set(), ms: new Set(), en: e.n, k: e.k });
       const a = agg.get(key);
       if (e.q != null) { a.q += toBase(e.q * f, e.u); a.hasQ = true; if (e.u) a.units.add(e.u); }
       a.from.add(m.id + '|' + name(r)); a.ms.add(m.id);
@@ -375,7 +376,7 @@ async function shoppingList(ms) {
   }
   return [...agg.values()].map(a => {
     let qty = '';
-    if (a.hasQ) { const [q, u] = fromBase(a.q, a.fam, a.units); qty = fmtQty(q, u); }
+    if (a.hasQ) { const [q, u] = fromBase(a.q, a.fam, a.units); qty = fmtQty(a.w ? Math.max(1, Math.round(q)) : q, u); }
     return { ...a, ms: [...a.ms], qty };
   });
 }
@@ -665,7 +666,7 @@ window.addEventListener('popstate', e => {
 // texte des étapes : grandes parties, ingrédients illustrés, durées → minuteur, températures
 function stepsHtml(steps, ings, f) {
   const find = ingMatcher(ings);
-  sheetState.ings = ings.map(e => ({ label: cap(ingLabel(e, e.q != null ? e.q * f : null)) + (e.nt ? ', ' + ingNote(e, e.q != null ? e.q * f : null) : ''), qty: e.q != null ? fmtQty(e.q * f, e.u) : '' }));
+  sheetState.ings = ings.map(e => ({ label: cap(ingLabel(e, qtyFor(e, f))) + (e.nt ? ', ' + ingNote(e, qtyFor(e, f)) : ''), qty: e.q != null ? fmtQty(qtyFor(e, f), e.u) : '' }));
   return structureSteps(steps).map(x => {
     if (x.kind === 'section') return `<div class="stsec ${x.note ? 'note' : ''}"><span>${x.note ? ic('info', 'sm') + ' ' : ''}${esc(x.title)}</span></div>`;
     const body = renderStepText(x.text, {
@@ -687,7 +688,7 @@ async function renderSheet(top) {
   const y = sheet.scrollTop;
   const f = ppl / (d.serv || 4);
   const rt = S.get('rate:' + id, {}), fav = S.get('fav:' + id, false), inM = inMenu(id);
-  const main = d.ing.filter(e => !e.p), pantry = d.ing.filter(e => e.p);
+  const main = d.ing.filter(e => !e.p), pantry = d.ing.filter(e => e.p && !e.h);
   const full = Math.round(r.r * 2) / 2;
   const starsTxt = ic('starFill').repeat(Math.floor(full)) + (full % 1 ? ic('starHalf') : '') + ic('star').repeat(5 - Math.ceil(full));
   const kws = (d.kw || []).map(kwFr).filter(Boolean);
@@ -713,12 +714,12 @@ async function renderSheet(top) {
     <div class="block"><h3>Ingrédients</h3>
       <div class="forppl">Pour ${stepper('sppl', id, ppl, ic('users', 'sm'))}</div>
       ${!d.units ? `<p class="muted small center">La source ne précise pas toujours les unités : quantités indicatives (adaptées à ${ppl} pers.).</p>` : ''}
-      <div class="ings">${main.map(e => `<div class="ing"><div class="bub">${ingPic(e.k, e.n)}</div><b>${e.q != null ? esc(fmtQty(e.q * f, e.u)) : ''}</b>${esc(cap(ingLabel(e, e.q != null ? e.q * f : null)))}${ingNote(e, e.q != null ? e.q * f : null) ? `<div class="orig">${esc(ingNote(e, e.q != null ? e.q * f : null))}</div>` : ''}${e.raw && !e.fr ? `<div class="orig">${esc(e.raw)}</div>` : ''}</div>`).join('')}</div>
+      <div class="ings">${main.map(e => { if (e.h) return `<div class="ingsec">${esc(cap(e.fr || e.n))}</div>`; const q = qtyFor(e, f), nt = ingNote(e, q); return `<div class="ing"><div class="bub">${ingPic(e.k, e.n)}</div><b>${q != null ? esc(fmtQty(q, e.u)) : ''}</b>${esc(cap(ingLabel(e, q)))}${nt ? `<div class="orig">${esc(nt)}</div>` : ''}${e.raw && !e.fr ? `<div class="orig">${esc(e.raw)}</div>` : ''}</div>`; }).join('')}</div>
       ${pantry.length ? `<div class="pantry"><b>Vérifiez que vous avez…</b><br><span class="muted">${pantry.map(e => esc(cap(e.fr || e.n)) + (e.q != null && e.u ? ' (' + esc(fmtQty(e.q * f, e.u)) + ')' : '')).join(' · ')}</span></div>` : ''}
     </div>
     <div class="block steps"><h3>Recette</h3>
       ${d.stEn ? `<div class="center" style="margin-bottom:8px"><button class="pill" data-act="toggleEn">${showEn ? 'Voir en français' : 'Voir la version originale (anglais)'}</button></div>` : ''}
-      ${stepsHtml(steps, d.ing, f)}
+      ${stepsHtml(steps, d.ing.filter(e => !e.h), f)}
     </div>
     <div class="rate"><h3>Vous l'avez cuisinée ?</h3>
       <div class="thumbs"><button class="${rt.thumb === 1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="1" aria-label="J'ai aimé">${ic('thumbUp')}</button><button class="${rt.thumb === -1 ? 'sel' : ''}" data-act="thumb" data-id="${id}" data-v="-1" aria-label="Bof">${ic('thumbDown')}</button></div>
