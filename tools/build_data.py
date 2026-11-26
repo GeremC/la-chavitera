@@ -25,7 +25,7 @@ from fractions import Fraction
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from units import fix_ingredients
+from units import fix_ingredients, fr_step_units
 from lexicon import (ING_FR, PANTRY, AISLES, CATEGORY_TYPE, TYPE_FR, CUISINES, EXPENSIVE,
                      EQUIPMENT, NAME_NOISE)
 
@@ -432,7 +432,7 @@ def build(args):
         if kcal and serv: idx["kc"] = kcal
         index.append(idx)
 
-        det = {"ing": out_ing, "st": [f_to_c(s) for s in (tr.get("st") or r["steps"])],
+        det = {"ing": out_ing, "st": [fr_step_units(f_to_c(s)) if tr.get("st") else f_to_c(s) for s in (tr.get("st") or r["steps"])],
                "serv": serv or 4, "prep": r["prep"], "cook": r["cook"], "kw": r["kw"][:12],
                "cat": r["cat"], "by": r["author"] if isinstance(r["author"], str) else None,
                "units": bool(lines)}
@@ -447,7 +447,7 @@ def build(args):
     (DATA / "r").mkdir(parents=True, exist_ok=True)
     for old in (DATA / "r").glob("*.json"):
         old.unlink()
-    version = hashlib.md5(json.dumps([i["id"] for i in index]).encode() + str(len(translations)).encode() + b"units-v1").hexdigest()[:10]
+    version = hashlib.md5(json.dumps([i["id"] for i in index]).encode() + str(len(translations)).encode() + b"units-v2").hexdigest()[:10]
     meta = {"v": version, "count": len(index), "buckets": BUCKETS,
             "cuisines": sorted({i["c"] for i in index if "c" in i}), "types": TYPE_FR,
             "source": "Food.com (Kaggle : Food.com - Recipes and Reviews)", "built": time.strftime("%Y-%m-%d")}

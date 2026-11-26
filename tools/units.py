@@ -342,3 +342,108 @@ def fix_ingredients(ings, has_units=True):
             finish_count(e)
         e.pop("_fem", None)
     return ings
+
+
+# ---------------------------------------------------------------- unités dans le texte des étapes
+# « Ajouter 1 Tb d'huile, 2 tasses de bouillon, cuire à 350°F dans un moule de 9x13 pouces »
+# -> « Ajouter 1 c. à s. d'huile, 480 ml de bouillon, cuire à 175°C dans un moule de 23x33 cm »
+_N = r"(?:\d+(?:[ -]\d+/\d+)|\d+/\d+|\d+(?:[.,]\d+)?|[½¼¾⅓⅔⅛])"
+_RANGE = rf"({_N}(?:\s*(?:-|–|à|to|ou|or)\s*{_N})?)"
+_FRAC = {"½": "1/2", "¼": "1/4", "¾": "3/4", "⅓": "1/3", "⅔": "2/3", "⅛": "1/8"}
+
+
+def _val(s):
+    from fractions import Fraction
+    s = s.strip()
+    for k, v in _FRAC.items():
+        s = s.replace(k, v)
+    s = s.replace(",", ".")
+    m = re.match(r"^(\d+)[ -](\d+/\d+)$", s)
+    try:
+        if m:
+            return float(int(m.group(1)) + Fraction(m.group(2)))
+        return float(Fraction(s)) if "/" in s else float(s)
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def _vals(rng):
+    parts = re.split(r"\s*(?:–|\bà\b|\bto\b|\bou\b|\bor\b)\s*|\s+-\s*|-\s+|(?<=\d)-(?=\d+(?:[.,]\d+)?(?:\s|$))", rng.strip())
+    # « 1-1/2 » est un nombre mixte, pas un intervalle
+    if re.match(r"^\d+-\d+/\d+$", rng.strip()):
+        parts = [rng.strip()]
+    out = [_val(p) for p in parts if p]
+    return out if out and all(v is not None for v in out) else None
+
+
+def _fmt_dec(x):
+    s = (f"{x:.1f}" if x < 10 and abs(x - round(x)) > 0.05 else str(int(round(x))))
+    return s.replace(".", ",")
+
+
+def _metric(vals, kind):
+    def one(v):
+        if kind == "ml":
+            ml = v * 240
+            return (_fmt_dec(ml / 1000), "L") if ml >= 1000 else (str(max(5, int(round(ml / 5) * 5))), "ml")
+        if kind == "qt":
+            ml = v * 946
+            return (_fmt_dec(ml / 1000), "L") if ml >= 1000 else (str(int(round(ml / 10) * 10)), "ml")
+        if kind == "pt":
+            ml = v * 473
+            return (_fmt_dec(ml / 1000), "L") if ml >= 1000 else (str(int(round(ml / 10) * 10)), "ml")
+        if kind == "oz":
+            g = v * 28.35
+            return (str(max(5, int(round(g / 5) * 5))) if g < 200 else str(int(round(g / 10) * 10))), "g"
+        if kind == "lb":
+            g = v * 453.6
+            return (_fmt_dec(g / 1000), "kg") if g >= 1000 else (str(int(round(g / 10) * 10)), "g")
+        if kind == "in":
+            cm = v * 2.54
+            return (_fmt_dec(round(cm * 2) / 2) if cm < 5 else str(int(round(cm)))), "cm"
+    conv = [one(v) for v in vals]
+    if len(conv) == 2 and conv[0][1] == conv[1][1]:
+        return f"{conv[0][0]} à {conv[1][0]} {conv[0][1]}"
+    return " à ".join(f"{a} {b}" for a, b in conv)
+
+
+_UNITS_TXT = [
+    (r"(?:(?i:tablespoons?|tbsps?|tbs|tb)|T)(?![\w'’])\.?", "cs"),
+    (r"(?:(?i:teaspoons?|tsps?)|t)(?![\w'’])\.?", "cc"),
+    (r"(?:de\s+)?(?i:cups?|tasses?)\b", "ml"), (r"(?i:quarts?)\b(?!\s+de\s+(?:tasse|livre))", "qt"),
+    (r"(?i:pints?)\b", "pt"), (r"(?:d'|de\s+)?(?i:(?:fl\.?\s*)?(?:ounces?|onces?|oz))\b\.?", "oz"),
+    (r"(?:de\s+)?(?i:pounds?|livres?|lbs?)\b\.?", "lb"), (r"(?:de\s+)?(?:(?i:inch(?:es)?|pouces?)\b|\")", "in"),
+]
+
+
+def fr_step_units(text):
+    if not text:
+        return text
+    # températures : 350°F, 350 degrés F, 65°F
+    def f2c(m):
+        c = round((int(m.group(1)) - 32) * 5 / 9 / 5) * 5
+        return f"{c}°C"
+    text = re.sub(r"(\d{2,3})\s*°\s*[fF]\b", f2c, text)
+    text = re.sub(r"(\d{2,3})\s*(?:degr[ée]s?|degrees?)\s*(?:F\b|Fahrenheit\b)", f2c, text)
+    text = re.sub(r"(?<![\d,.])([2-5]\d{2})\s*(?:degr[ée]s?|degrees?)(?!\s*(?:C|Celsius))", f2c, text)
+
+    # dimensions : 9x13 pouces, 8-1/2 x 4-1/2-inch
+    def dims(m):
+        vs = [_val(x) for x in re.split(r"\s*[x×X]\s*", m.group(1))]
+        if any(v is None for v in vs):
+            return m.group(0)
+        return "x".join(str(int(round(v * 2.54))) for v in vs) + " cm"
+    text = re.sub(rf"({_N}(?:\s*[x×X]\s*{_N}){{1,2}})\s*-?\s*(?:inch(?:es)?|pouces?|po\b|\")", dims, text)
+
+    for pat, kind in _UNITS_TXT:
+        rx = re.compile(rf"(?<![\w/]){_RANGE}\s*-?\s*{pat}")
+
+        def rep(m, kind=kind):
+            vals = _vals(m.group(1))
+            if not vals:
+                return m.group(0)
+            if kind in ("cs", "cc"):
+                return m.group(1) + (" c. à s." if kind == "cs" else " c. à c.")
+            return _metric(vals, kind)
+        text = rx.sub(rep, text)
+    return text
